@@ -4,7 +4,7 @@ import pygame
 
 from pygame import Surface
 
-import ports
+from ports import Ports
 from memory import Memory
 
 
@@ -44,8 +44,9 @@ SPECTRUM_FULL_SCREEN_SIZE = (FULL_SCREEN_WIDTH, FULL_SCREEN_HEIGHT)
 
 
 class Video:
-    def __init__(self, memory: Memory, ratio: int = 2):
+    def __init__(self, memory: Memory, ports: Ports, ratio: int = 2):
         self.memory = memory
+        self.ports = ports
         self.ratio = ratio
 
         # Initialisation of address tables for pixels and attribute lines
@@ -107,9 +108,9 @@ class Video:
             self.clock.tick(25)
             pygame.display.set_caption(f'{CAPTION} - {self.clock.get_fps():.2f} FPS')
 
-        if ports.current_border != self.old_border:
-            self.zx_screen_with_border.fill(ports.current_border)
-            self.old_border = ports.current_border
+        if self.ports.current_border != self.old_border:
+            self.zx_screen_with_border.fill(self.ports.current_border)
+            self.old_border = self.ports.current_border
 
         self.fill_screen_map()
         self.zx_screen_with_border.blit(self.zx_screen, (64, 32))

@@ -2,6 +2,7 @@ import video
 import ports
 
 from memory import Memory
+from ports import Ports
 from video import Video
 
 IM0 = 0
@@ -23,8 +24,9 @@ PF = F_PV
 
 
 class Z80:
-    def __init__(self, memory: Memory, video: Video, clock_frequency_in_MHz: float = 3.5):
+    def __init__(self, memory: Memory, ports: Ports, video: Video, clock_frequency_in_MHz: float = 3.5):
         self.memory = memory
+        self.ports = ports
         self.video = video
         self.video_update_time = 0
 
@@ -391,7 +393,7 @@ class Z80:
         Hz = 25
     
         self.video_update_time += 1
-        ports.keyboard.do_keys()
+        self.ports.keyboard.do_keys()
         if not (self.video_update_time % int(50 / Hz)):
             self.video.update()
         return self.interruptCPU()
@@ -2572,11 +2574,11 @@ class Z80:
         return self._cbdict.get(opcode)()
     
     def outna(self):
-        ports.port_out(self.nxtpcb(), self._A[0])
+        self.ports.port_out(self.nxtpcb(), self._A[0])
         return 11
     
     def inan(self):
-        self._A[0] = ports.port_in(self._A[0] << 8 | self.nxtpcb())
+        self._A[0] = self.ports.port_in(self._A[0] << 8 | self.nxtpcb())
         return 11
     
     def exsphl(self):
@@ -2829,35 +2831,35 @@ class Z80:
     
     # OUT (c),r
     def outtocb(self):
-        ports.port_out(self._BC[0], self._B[0])
+        self.ports.port_out(self._BC[0], self._B[0])
         return 12
     
     def outtocc(self):
-        ports.port_out(self._BC[0], self._C[0])
+        self.ports.port_out(self._BC[0], self._C[0])
         return 12
     
     def outtocd(self):
-        ports.port_out(self._BC[0], self._D[0])
+        self.ports.port_out(self._BC[0], self._D[0])
         return 12
     
     def outtoce(self):
-        ports.port_out(self._BC[0], self._E[0])
+        self.ports.port_out(self._BC[0], self._E[0])
         return 12
     
     def outtoch(self):
-        ports.port_out(self._BC[0], self._H[0])
+        self.ports.port_out(self._BC[0], self._H[0])
         return 12
     
     def outtocl(self):
-        ports.port_out(self._BC[0], self._L[0])
+        self.ports.port_out(self._BC[0], self._L[0])
         return 12
     
     def outtoc0(self):
-        ports.port_out(self._BC[0], 0)
+        self.ports.port_out(self._BC[0], 0)
         return 12
     
     def outtoca(self):
-        ports.port_out(self._BC[0], self._A[0])
+        self.ports.port_out(self._BC[0], self._A[0])
         return 12
     
     # SBC/ADC HL,ss
@@ -3050,7 +3052,7 @@ class Z80:
     
     def ini(self):
         c = self._fC
-        self.memory.pokeb(self._HL[0], ports.port_in(self._BC[0]))
+        self.memory.pokeb(self._HL[0], self.ports.port_in(self._BC[0]))
         self._HL[0] = self.inc16(self._HL[0])
         self._B[0] = self.qdec8(self._B[0])
         self._fC = c
@@ -3060,7 +3062,7 @@ class Z80:
     
     def outi(self):
         c = self._fC
-        ports.port_out(self._BC[0], self.memory.peekb(self._HL[0]))
+        self.ports.port_out(self._BC[0], self.memory.peekb(self._HL[0]))
         self._HL[0] = self.inc16(self._HL[0])
         self._B[0] = self.qdec8(self._B[0])
         self._fC = c
@@ -3090,7 +3092,7 @@ class Z80:
         return 16
     
     def ind(self):
-        self.memory.pokeb(self._HL[0], ports.port_in(self._BC[0]))
+        self.memory.pokeb(self._HL[0], self.ports.port_in(self._BC[0]))
         self._HL[0] = self.dec16(self._HL[0])
         self._B[0] = self.qdec8(self._B[0])
         self._fN = True
@@ -3098,7 +3100,7 @@ class Z80:
         return 16
     
     def outd(self):
-        ports.port_out(self._BC[0], self.memory.peekb(self._HL[0]))
+        self.ports.port_out(self._BC[0], self.memory.peekb(self._HL[0]))
         self._HL[0] = self.dec16(self._HL[0])
         self._B[0] = self.qdec8(self._B[0])
         self._fN = True
@@ -3142,7 +3144,7 @@ class Z80:
     
     def inir(self):
         while True:
-            self.memory.pokeb(self._HL, ports.port_in(self._BC[0]))
+            self.memory.pokeb(self._HL, self.ports.port_in(self._BC[0]))
             self._HL[0] = (self._HL[0] + 1) % 65536
             self._B[0] = (self._B[0] - 1) % 256
             self._R_b[0] = (self._R_b[0] + 2) % 128 + self._R7_b
@@ -3157,7 +3159,7 @@ class Z80:
     
     def otir(self):
         while True:
-            ports.port_out(self._BC[0], self.memory.peekb(self._HL[0]))
+            self.ports.port_out(self._BC[0], self.memory.peekb(self._HL[0]))
             self._HL[0] = (self._HL[0] + 1) % 65536
             self._B[0] = (self._B[0] - 1) % 256
             self._R_b[0] = (self._R_b[0] + 2) % 128 + self._R7_b
@@ -3206,7 +3208,7 @@ class Z80:
     
     def indr(self):
         while True:
-            self.memory.pokeb(self._HL, ports.port_in(self._BC[0]))
+            self.memory.pokeb(self._HL, self.ports.port_in(self._BC[0]))
             self._HL[0] = (self._HL[0] - 1) % 65536
             self._B[0] = (self._B[0] - 1) % 256
             self._R_b[0] = (self._R_b[0] + 2) % 128 + self._R7_b
@@ -3221,7 +3223,7 @@ class Z80:
     
     def otdr(self):
         while True:
-            ports.port_out(self._BC[0], self.memory.peekb(self._HL[0]))
+            self.ports.port_out(self._BC[0], self.memory.peekb(self._HL[0]))
             self._HL[0] = (self._HL[0] - 1) % 65536
             self._B[0] = (self._B[0] - 1) % 256
             self._R_b[0] = (self._R_b[0] + 2) % 128 + self._R7_b
@@ -4616,7 +4618,7 @@ class Z80:
         return 23
 
     def in_bc(self):
-        ans = ports.port_in(self._BC[0])
+        ans = self.ports.port_in(self._BC[0])
         self._fZ = ans == 0
         self._fS = ans > 0x7f
         self._f3 = (ans & F_3) != 0
@@ -4972,6 +4974,5 @@ class Z80:
     def set(bit, val):
         return val | bit
     
-    @staticmethod
-    def outb(port, value):
-        ports.port_out(port, value)
+    def outb(self, port, value):
+        self.ports.port_out(port, value)

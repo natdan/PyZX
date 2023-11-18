@@ -14,23 +14,28 @@ Simple fixes Bedazzle 2020
 '''
 
 import sys
-import ports
+
 # import load
 
-from video import Video
+from keyboard import Keyboard
+from ports import Ports
 from memory import Memory
-from Z80 import Z80
+from video import Video
+from z80 import Z80
 
+from load import Load
 
 ROMFILE = '48.rom'
 
-
+keyboard = Keyboard()
+ports = Ports(keyboard)
 memory = Memory()
-video = Video(memory)
-z80 = Z80(memory, video, 3.5)
+video = Video(memory, ports)
+z80 = Z80(memory, ports, video, 3.5)
 # Z80.Z80(3.5)  # MhZ
 
 video.init()
+
 
 def load_rom(romfilename):
     ''' Load given romfile into memory '''
@@ -104,6 +109,7 @@ SNADIR = 'games/'
 # load.load_sna(SNADIR + 'bt.sna')
 # load.load_sna(SNADIR + 'z80full_with_pause.SNA')
 
-# load.load_z80(SNADIR + 'Batty.z80')
+load = Load(z80)
+load.load_z80(SNADIR + 'Batty.z80')
 
 run()
