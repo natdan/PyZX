@@ -14,19 +14,29 @@ Simple fixes Bedazzle 2020
 '''
 
 import sys
-import Z80
-import video
-import load
+import ports
+# import load
+
+from video import Video
+from memory import Memory
+from Z80 import Z80
 
 
 ROMFILE = '48.rom'
 
 
+memory = Memory()
+video = Video(memory)
+z80 = Z80(memory, video, 3.5)
+# Z80.Z80(3.5)  # MhZ
+
+video.init()
+
 def load_rom(romfilename):
     ''' Load given romfile into memory '''
 
     with open(romfilename, 'rb') as rom:
-        rom.readinto(Z80.memory.mem)
+        rom.readinto(memory.mem)
 
     print('Loaded ROM: %s' % romfilename)
 
@@ -34,17 +44,14 @@ def load_rom(romfilename):
 def run():
     ''' Start the execution '''
     try:
-        Z80.execute()
+        z80.execute()
     except KeyboardInterrupt:
         return
 
 
-video.init()
-Z80.Z80(3.5)  # MhZ
-
 load_rom(ROMFILE)
-Z80.reset()
-Z80.ports.port_out(254, 0xff)  # white border on startup
+z80.reset()
+ports.port_out(254, 0xff)  # white border on startup
 
 sys.setswitchinterval(255)  # we don't use threads, kind of speed up
 
