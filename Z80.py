@@ -5972,3 +5972,7 @@ def res(bit, val):
 
 def set(bit, val): 
     return val | bit
+
+
+def outb(port, value):
+    ports.port_out(port, value)
