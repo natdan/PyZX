@@ -49,7 +49,7 @@ Z80.ports.port_out(254, 0xff)  # white border on startup
 sys.setswitchinterval(255)  # we don't use threads, kind of speed up
 
 
-SNADIR = '../Perfect_SNA/'
+SNADIR = 'games/'
 
 # ok
 # load.load_sna(SNADIR + 'Action Reflex.sna')
