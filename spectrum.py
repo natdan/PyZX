@@ -81,7 +81,7 @@ SNADIR = 'games/'
 # load.load_sna(SNADIR + 'Saboteur 2.sna')
 # load.load_sna(SNADIR + 'Scuba Dive.sna')
 # load.load_sna(SNADIR + 'Three Weeks In Paradise.sna')
-load.load_sna(SNADIR + 'Mask_3_Venom_strikes_back.sna')
+# load.load_sna(SNADIR + 'Mask_3_Venom_strikes_back.sna')
 # load.load_sna(SNADIR + 'Yogi Bear.sna')
 # load.load_sna(SNADIR + 'Zynaps.sna')
 
@@ -96,4 +96,7 @@ load.load_sna(SNADIR + 'Mask_3_Venom_strikes_back.sna')
 # load.load_sna(SNADIR + 'bt_city.sna')
 # load.load_sna(SNADIR + 'bt.sna')
 # load.load_sna(SNADIR + 'z80full_with_pause.SNA')
+
+# load.load_z80(SNADIR + 'Batty.z80')
+
 run()
