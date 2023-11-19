@@ -37,21 +37,23 @@ class Spectrum:
         self.video = Video(self.memory, self.ports)
         self.z80 = Z80(self.memory, self.ports, self.clock_cycle_test, 3.5)  # Z80.Z80(3.5)  # MhZ
         self.video_update_time = 0
-        self.Hz = 25
-
+        self.tstates_per_interrupt = 69888  # as per https://worldofspectrum.org/faq/reference/48kreference.htm
+        self.z80.local_tstates -= self.tstates_per_interrupt
         self.video.init()
 
-    def interrupt(self, z80: Z80):
-
-        self.video_update_time += 1
+    def process_video_and_keyboard(self):
         self.ports.keyboard.do_keys()
-        if not (self.video_update_time % int(50 / self.Hz)):
-            self.video.update()
-        return z80.interruptCPU()
+        self.video.update()
 
     def clock_cycle_test(self, z80: Z80):
-        if z80.local_clock_cycles_counter >= 0:
-            z80.local_clock_cycles_counter -= z80.tstates_per_interrupt - self.interrupt(z80)
+        if z80.local_tstates >= 0:
+            # set for next vertical blanking interrupt
+            z80.local_tstates -= self.tstates_per_interrupt
+
+            self.process_video_and_keyboard()
+
+            # Handle interrupt in the processor add clock cycles for handling of the interrupt
+            z80.local_tstates += z80.interruptCPU()
 
     def load_rom(self, romfilename):
         ''' Load given romfile into memory '''
@@ -127,7 +129,6 @@ if __name__ == "__main__":
     # load.load_sna(SNADIR + 'z80full_with_pause.SNA')
 
     # load.load_z80(SNADIR + 'Batty.z80')
-
 
     # load.load_sna(SNADIR + 'Batman.sna')
     # load.load_sna(SNADIR + "CHUCKEGG 2.SNA")
