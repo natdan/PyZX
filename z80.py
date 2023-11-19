@@ -1,6 +1,7 @@
+from typing import Callable
+
 from memory import Memory
 from ports import Ports
-from video import Video
 
 IM0 = 0
 IM1 = 1
@@ -21,15 +22,15 @@ PF = F_PV
 
 
 class Z80:
-    def __init__(self, memory: Memory, ports: Ports, video: Video, clock_frequency_in_MHz: float = 3.5):
+    def __init__(self, memory: Memory, ports: Ports, clock_cycle_test: Callable[['Z80'], None], clock_frequency_in_MHz: float = 3.5) -> None:
         self.memory = memory
         self.ports = ports
-        self.video = video
+        self.clock_cycle_test = clock_cycle_test
         self.video_update_time = 0
 
         self.show_debug_info = False
         self.tstates_per_interrupt = int((clock_frequency_in_MHz * 1000000.0) / 50)
-        self.local_tstates = -self.tstates_per_interrupt  # -70000
+        self.local_clock_cycles_counter = -self.tstates_per_interrupt  # -70000
 
         self.p_ = 0
         self.parity = [False] * 256
@@ -379,20 +380,7 @@ class Z80:
         print(f'PC: 0x{self._PC[0]:04x}\tOPCODE: {self.memory.peekb(self._PC[0]):03d}\tA: 0x{self._A[0]:02x}\tHL: 0x{self._HL[0]:04x}\tBC: 0x{self._BC[0]:04x}\tDE: 0x{self._DE[0]:04x}')
         print(f'FLAGS 0x{self._F[0]:02x}\tC: {self._fC}\tN: {self._fN}\tPV: {self._fPV}\t3: {self._f3}\tH: {self._fH}\t5: {self._f5}\tZ: {self._fZ}\tS: {self._fS}')
         print(f'IFF1 {self._IFF1}, IFF2 {self._IFF2}')
-    
-    # Interrupt handlers
-    # def interruptTriggered( tstates ):
-    # return (tstates >= 0);
-    
-    def interrupt(self):
-        Hz = 25
-    
-        self.video_update_time += 1
-        self.ports.keyboard.do_keys()
-        if not (self.video_update_time % int(50 / Hz)):
-            self.video.update()
-        return self.interruptCPU()
-    
+
     def interruptCPU(self):
         # If not a non-maskable interrupt
         def im0im1():
@@ -417,28 +405,22 @@ class Z80:
         if self.show_debug_info:
             print(f'Interrupt: {self._IM}, PC: 0x{self._PC[0]:4x}, IFF1: {self._IFF1}')
         return {IM0: im0im1, IM1: im0im1, IM2: im2}.get(self._IM)()
-    
-    # Z80 fetch/execute loop
-    def check_tstates(self):
-        if self.local_tstates >= 0:
-            # print(f'LTS: {self.local_tstates} self._PC: {self._PC[0]:4x}')
-            self.local_tstates -= self.tstates_per_interrupt - self.interrupt()
-    
+
     def execute(self):
     
         while True:
-            self.check_tstates()
+            self.clock_cycle_test(self)
             self.inc_r()
             if self.show_debug_info:
                 self.show_registers()
             opcode = self.nxtpcb()
             if opcode == 118:  # HALT
-                halts_to_interrupt = int(((-self.local_tstates - 1) / 4) + 1)
-                self.local_tstates += (halts_to_interrupt * 4)
+                halts_to_interrupt = int(((-self.local_clock_cycles_counter - 1) / 4) + 1)
+                self.local_clock_cycles_counter += (halts_to_interrupt * 4)
                 self.inc_r(halts_to_interrupt - 1)
                 continue
             else:
-                self.local_tstates += self.main_cmds.get(opcode)()
+                self.local_clock_cycles_counter += self.main_cmds.get(opcode)()
     
     def execute_id(self):
         self.inc_r()
@@ -3114,8 +3096,8 @@ class Z80:
             self._R_b[0] = (self._R_b[0] + 2) % 128 + self._R7_b
             if self._BC[0] == 0:
                 break
-            self.local_tstates += 21
-            self.check_tstates()
+            self.local_clock_cycles_counter += 21
+            self.clock_cycle_test(self)
         self._fPV = False
         self._fN = False
         self._fH = False
@@ -3131,8 +3113,8 @@ class Z80:
             self._R_b[0] = (self._R_b[0] + 2) % 128 + self._R7_b
             if self._BC[0] == 0 or self._fZ:
                 break
-            self.local_tstates += 21
-            self.check_tstates()
+            self.local_clock_cycles_counter += 21
+            self.clock_cycle_test(self)
         self._fC = c
         self._fN = True
         self._fPV = self._BC[0] != 0
@@ -3146,8 +3128,8 @@ class Z80:
             self._R_b[0] = (self._R_b[0] + 2) % 128 + self._R7_b
             if self._B[0] == 0:
                 break
-            self.local_tstates += 21
-            self.check_tstates()
+            self.local_clock_cycles_counter += 21
+            self.clock_cycle_test(self)
         self._fZ = True
         self._fC = False
         self._fN = False
@@ -3161,8 +3143,8 @@ class Z80:
             self._R_b[0] = (self._R_b[0] + 2) % 128 + self._R7_b
             if self._B[0] == 0:
                 break
-            self.local_tstates += 21
-            self.check_tstates()
+            self.local_clock_cycles_counter += 21
+            self.clock_cycle_test(self)
         self._fZ = True
         self._fN = False
         return 16
@@ -3178,8 +3160,8 @@ class Z80:
             self._R_b[0] = (self._R_b[0] + 2) % 128 + self._R7_b
             if self._BC[0] == 0:
                 break
-            self.local_tstates += 21
-            self.check_tstates()
+            self.local_clock_cycles_counter += 21
+            self.clock_cycle_test(self)
         self._fPV = False
         self._fH = False
         self._fN = False
@@ -3195,8 +3177,8 @@ class Z80:
             self._R_b[0] = (self._R_b[0] + 2) % 128 + self._R7_b
             if self._BC[0] == 0 or self._fZ:
                 break
-            self.local_tstates += 21
-            self.check_tstates()
+            self.local_clock_cycles_counter += 21
+            self.clock_cycle_test(self)
         self._fC = c
         self._fN = True
         self._fPV = self._BC[0] != 0
@@ -3210,8 +3192,8 @@ class Z80:
             self._R_b[0] = (self._R_b[0] + 2) % 128 + self._R7_b
             if self._B[0] == 0:
                 break
-            self.local_tstates += 21
-            self.check_tstates()
+            self.local_clock_cycles_counter += 21
+            self.clock_cycle_test(self)
         self._fZ = True
         self._fC = False
         self._fN = False
@@ -3225,8 +3207,8 @@ class Z80:
             self._R_b[0] = (self._R_b[0] + 2) % 128 + self._R7_b
             if self._B[0] == 0:
                 break
-            self.local_tstates += 21
-            self.check_tstates()
+            self.local_clock_cycles_counter += 21
+            self.clock_cycle_test(self)
         self._fZ = True
         self._fN = False
         return 16

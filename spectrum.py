@@ -35,9 +35,23 @@ class Spectrum:
         self.ports = Ports(self.keyboard)
         self.memory = Memory()
         self.video = Video(self.memory, self.ports)
-        self.z80 = Z80(self.memory, self.ports, self.video, 3.5)  # Z80.Z80(3.5)  # MhZ
+        self.z80 = Z80(self.memory, self.ports, self.clock_cycle_test, 3.5)  # Z80.Z80(3.5)  # MhZ
+        self.video_update_time = 0
+        self.Hz = 25
 
         self.video.init()
+
+    def interrupt(self, z80: Z80):
+
+        self.video_update_time += 1
+        self.ports.keyboard.do_keys()
+        if not (self.video_update_time % int(50 / self.Hz)):
+            self.video.update()
+        return z80.interruptCPU()
+
+    def clock_cycle_test(self, z80: Z80):
+        if z80.local_clock_cycles_counter >= 0:
+            z80.local_clock_cycles_counter -= z80.tstates_per_interrupt - self.interrupt(z80)
 
     def load_rom(self, romfilename):
         ''' Load given romfile into memory '''
