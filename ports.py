@@ -14,7 +14,7 @@ class Ports:
             # (0x0320, 0xfadf, 2, 2, 2, xInFADF, None),       # K-MOUSEturboB
             # (0x0720, 0xfbdf, 2, 2, 2, xInFBDF, None),       # K-MOUSE_X
             # (0x0720, 0xffdf, 2, 2, 2, xInFFDF, None),      # K-MOUSE_Y
-            (0x0021, 0x001f, 0, 2, 2, self.spIn1F, None),  # kempstom joystick
+            (0x0021, 0x001f, 0, 2, 2, self.spIn1F, None),  # kempston joystick
             (0x0000, 0x0000, 0, 2, 2, self.spInFF, None),  # all unknown ports is FF (nodos)
             (0x0000, 0x0000, 2, 2, 2, self.spInFF, None)
         ]

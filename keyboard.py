@@ -1,4 +1,5 @@
 import pygame
+
 from pygame.locals import *
 
 b4 = 0x10

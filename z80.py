@@ -1,6 +1,3 @@
-import video
-import ports
-
 from memory import Memory
 from ports import Ports
 from video import Video
@@ -31,8 +28,7 @@ class Z80:
         self.video_update_time = 0
 
         self.show_debug_info = False
-        self.tstates_per_interrupt = 0
-        self.tstates_per_interrupt = int((clock_frequency_in_MHz * 1e6) / 50)
+        self.tstates_per_interrupt = int((clock_frequency_in_MHz * 1000000.0) / 50)
         self.local_tstates = -self.tstates_per_interrupt  # -70000
 
         self.p_ = 0
@@ -380,10 +376,9 @@ class Z80:
         self.video_update_time = 0
 
     def show_registers(self):
-        if self.show_debug_info:
-            print(f'PC: 0x{self._PC[0]:04x}\tOPCODE: {self.memory.peekb(self._PC[0]):03d}\tA: 0x{self._A[0]:02x}\tHL: 0x{self._HL[0]:04x}\tBC: 0x{self._BC[0]:04x}\tDE: 0x{self._DE[0]:04x}')
-            print(f'FLAGS 0x{self._F[0]:02x}\tC: {self._fC}\tN: {self._fN}\tPV: {self._fPV}\t3: {self._f3}\tH: {self._fH}\t5: {self._f5}\tZ: {self._fZ}\tS: {self._fS}')
-            print(f'IFF1 {self._IFF1}, IFF2 {self._IFF2}')
+        print(f'PC: 0x{self._PC[0]:04x}\tOPCODE: {self.memory.peekb(self._PC[0]):03d}\tA: 0x{self._A[0]:02x}\tHL: 0x{self._HL[0]:04x}\tBC: 0x{self._BC[0]:04x}\tDE: 0x{self._DE[0]:04x}')
+        print(f'FLAGS 0x{self._F[0]:02x}\tC: {self._fC}\tN: {self._fN}\tPV: {self._fPV}\t3: {self._f3}\tH: {self._fH}\t5: {self._f5}\tZ: {self._fZ}\tS: {self._fS}')
+        print(f'IFF1 {self._IFF1}, IFF2 {self._IFF2}')
     
     # Interrupt handlers
     # def interruptTriggered( tstates ):
@@ -434,12 +429,13 @@ class Z80:
         while True:
             self.check_tstates()
             self.inc_r()
-            self.show_registers()
+            if self.show_debug_info:
+                self.show_registers()
             opcode = self.nxtpcb()
             if opcode == 118:  # HALT
-                haltsToInterrupt = int(((-self.local_tstates - 1) / 4) + 1)
-                self.local_tstates += (haltsToInterrupt * 4)
-                self.inc_r(haltsToInterrupt - 1)
+                halts_to_interrupt = int(((-self.local_tstates - 1) / 4) + 1)
+                self.local_tstates += (halts_to_interrupt * 4)
+                self.inc_r(halts_to_interrupt - 1)
                 continue
             else:
                 self.local_tstates += self.main_cmds.get(opcode)()
