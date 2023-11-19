@@ -70,18 +70,18 @@ class Video:
 
         self.buffer = bytearray(SCREEN_WIDTH * SCREEN_HEIGHT)
         self.buffer_m = memoryview(self.buffer)
+        self.init_pixelmap()
 
     def init_pixelmap(self):
         for i in range(256):
             color_ink, color_paper = self.colormap[i]
-            pixellist = self.pixelmap_m[i * STRIDE:i * STRIDE+STRIDE]
+            pixellist = self.pixelmap_m[i * STRIDE:i * STRIDE + STRIDE]
             for pix in range(256):
                 pixels = pixellist[pix * 8:pix * 8 + 8]
                 for bit in range(8):
                     pixels[7 - bit] = color_ink if (pix & (1 << bit)) else color_paper
 
     def init(self):
-        self.init_pixelmap()
         pygame.init()
 
         icon = pygame.image.load('icon.png')
@@ -105,14 +105,15 @@ class Video:
 
     def update(self):
         if __show_fps__:
-            self.clock.tick(25)
+            self.clock.tick(50)
             pygame.display.set_caption(f'{CAPTION} - {self.clock.get_fps():.2f} FPS')
 
+        # TODO - collect timings of changes of border and recreate it afterwards here
         if self.ports.current_border != self.old_border:
             self.zx_screen_with_border.fill(self.ports.current_border)
             self.old_border = self.ports.current_border
 
-        self.fill_screen_map()
+        # self.fill_screen_map()
         self.zx_screen_with_border.blit(self.zx_screen, (64, 32))
         pygame.transform.scale(self.zx_screen_with_border, self.scaled_spectrum_size, self.pre_screen)
         self.screen.blit(self.pre_screen, (0, 0))
@@ -129,8 +130,8 @@ class Video:
             attr_addr = self.addr_attr[coord_y]
 
             for i in range(0, 32):
-                poffs = zx_videoram[attr_addr+i] * STRIDE+zx_videoram[pix_addr + i] * 8
-                self.buffer_m[offs:offs+8] = self.pixelmap_m[poffs:poffs+8]
+                poffs = zx_videoram[attr_addr + i] * STRIDE + zx_videoram[pix_addr + i] * 8
+                self.buffer_m[offs:offs + 8] = self.pixelmap_m[poffs:poffs + 8]
                 offs += 8
 
         buf = self.zx_screen.get_buffer()

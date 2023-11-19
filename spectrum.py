@@ -43,6 +43,8 @@ class Spectrum:
 
     def process_video_and_keyboard(self):
         self.ports.keyboard.do_keys()
+        self.video.fill_screen_map()
+
         self.video.update()
 
     def clock_cycle_test(self, z80: Z80):
