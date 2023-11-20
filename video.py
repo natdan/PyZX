@@ -70,6 +70,9 @@ class Video:
 
         self.buffer = bytearray(SCREEN_WIDTH * SCREEN_HEIGHT)
         self.buffer_m = memoryview(self.buffer)
+
+        self.zx_videoram = self.memory.mem[16384:16384 + 6912]
+
         self.init_pixelmap()
 
     def init_pixelmap(self):
@@ -96,7 +99,7 @@ class Video:
         self.pre_screen = pygame.surface.Surface(size=self.scaled_spectrum_size, flags=pygame.HWSURFACE, depth=8)
         self.pre_screen.set_palette(COLORS)
 
-        self.screen = pygame.display.set_mode(size=self.scaled_spectrum_size, flags=pygame.HWSURFACE | pygame.DOUBLEBUF | pygame.SCALED, depth=8)
+        self.screen = pygame.display.set_mode(size=self.scaled_spectrum_size, flags=pygame.HWSURFACE | pygame.DOUBLEBUF, depth=8)
 
         # pygame.display.set_palette(COLORS)
         pygame.display.set_caption(CAPTION)
@@ -121,8 +124,20 @@ class Video:
         # pygame.draw.circle(screen, (255, 128, 0), (100, 100), 40)
         pygame.display.flip()
 
-    def fill_screen_map(self):
-        zx_videoram = self.memory.mem[16384:16384 + 6912]
+    def fill_screen_map_line(self, coord_y: int) -> None:
+        # zx_videoram = self.memory.mem[16384:16384 + 6912]
+        offs = 32 * 8 * coord_y
+
+        pix_addr = self.addr_pix[coord_y]
+        attr_addr = self.addr_attr[coord_y]
+
+        for i in range(0, 32):
+            poffs = self.zx_videoram[attr_addr + i] * STRIDE + self.zx_videoram[pix_addr + i] * 8
+            self.buffer_m[offs:offs + 8] = self.pixelmap_m[poffs:poffs + 8]
+            offs += 8
+
+    def fill_screen_map(self) -> None:
+        # zx_videoram = self.memory.mem[16384:16384 + 6912]
         offs = 0
 
         for coord_y in range(SCREEN_HEIGHT):
@@ -130,9 +145,10 @@ class Video:
             attr_addr = self.addr_attr[coord_y]
 
             for i in range(0, 32):
-                poffs = zx_videoram[attr_addr + i] * STRIDE + zx_videoram[pix_addr + i] * 8
+                poffs = self.zx_videoram[attr_addr + i] * STRIDE + self.zx_videoram[pix_addr + i] * 8
                 self.buffer_m[offs:offs + 8] = self.pixelmap_m[poffs:poffs + 8]
                 offs += 8
 
+    def update_zx_screen(self) -> None:
         buf = self.zx_screen.get_buffer()
         buf.write(self.buffer_m.tobytes())
