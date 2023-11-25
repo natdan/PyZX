@@ -121,7 +121,6 @@ class Video:
         pygame.transform.scale(self.zx_screen_with_border, self.scaled_spectrum_size, self.pre_screen)
         self.screen.blit(self.pre_screen, (0, 0))
 
-        # pygame.draw.circle(screen, (255, 128, 0), (100, 100), 40)
         pygame.display.flip()
 
     def fill_screen_map_line(self, coord_y: int) -> None:

@@ -1,12 +1,14 @@
 import sys
 import struct
 
+from ports import Ports
 from z80 import Z80, IM0, IM1, IM2
 
 
 class Load:
-    def __init__(self, z80: Z80):
+    def __init__(self, z80: Z80, ports: Ports):
         self.z80 = z80
+        self.ports = ports
         self._z80_header = struct.Struct('<BBHHHHBBBHHHHBBHHBBB')
         self._sna_struct = struct.Struct('<BHHHHHHHHHBBHHBB')
 
@@ -53,31 +55,40 @@ class Load:
             z80file = f.read()
         mz80file = memoryview(z80file)
 
-        self.z80._A[0], self.z80._F[0], self.z80._BC[0], self.z80._HL[0], self.z80._PC[0], self.z80._SP[0], self.z80._I[0], self.z80.R, tbyte, self.z80._DE[0], \
-            self.z80._BC_[0], self.z80._DE_[0], self.z80._HL_[0], self.z80._A_[0], self.z80._F_[0], self.z80._IY[0], self.z80._IX[0], iff1, iff2, im = self._z80_header.unpack_from(mz80file, 0)
-        self.z80.setflags()
+        self.z80.regA, regF, regBC, regHL, self.z80.regPC, self.z80.regSP, self.z80.regI, regR, tbyte, regDE, \
+            regBCx, regDEx, regHLx, self.z80.regAx, regFx, self.z80.regIY, self.z80.regIX, iff1, iff2, im = self._z80_header.unpack_from(mz80file, 0)
+        self.z80.set_flags(regF)
+        self.z80.set_reg_BC(regBC)
+        self.z80.set_reg_HL(regHL)
+        self.z80.set_reg_R(regR)
+        self.z80.set_reg_DE(regDE)
+        self.z80.set_reg_BCx(regBCx)
+        self.z80.set_reg_DEx(regDEx)
+        self.z80.set_reg_HLx(regHLx)
+        self.z80.set_reg_Fx(regFx)
 
         if tbyte == 255:
             tbyte = 1
 
-        self.z80.outb(254, ((tbyte >> 1) % 8))  # border
+        self.ports.out_port(254, ((tbyte >> 1) % 8))  # border
 
         if (tbyte % 2) != 0:
-            self.z80._R = self.z80._R | 0x80
+            regR = regR | 0x80
+        self.z80.set_reg_R(regR)
 
         compressed = ((tbyte & 0x20) != 0)
-        self.z80._IFF1 = iff1 != 0
-        self.z80._IFF2 = iff2 != 0
+        self.z80.ffIFF1 = iff1 != 0
+        self.z80.ffIFF2 = iff2 != 0
 
         im = im & 0x03
         if im == 0:
-            self.z80._IM = IM0
+            self.z80.modeINT = IM0
         elif im == 1:
-            self.z80._IM = IM1
+            self.z80.modeINT = IM1
         else:
-            self.z80._IM = IM2
+            self.z80.modeINT = IM2
 
-        if self.z80._PC[0] == 0:
+        if self.z80.regPC == 0:
             self.load_z80_extended(mz80file[30:])
             return
 
@@ -85,8 +96,8 @@ class Load:
         self.load_z80_block(mz80file[30:], 16384, compressed)
 
     def load_z80_extended(self, mz80file):
-        z80_type, self.z80._PC[0], zx_type = struct.unpack_from('<HHB', mz80file, 0)
-        print(f'first byte: {z80_type}, PC: {self.z80._PC[0]}')
+        z80_type, self.z80.regPC, zx_type = struct.unpack_from('<HHB', mz80file, 0)
+        print(f'first byte: {z80_type}, PC: {self.z80.regPC}')
         if z80_type == 23:  # V2.01
             print('self.z80 (v201)')
             """
@@ -211,19 +222,34 @@ class Load:
         with open(name, 'rb') as f:
             snafile = f.read()
         msnafile = memoryview(snafile)
-        self.z80._I[0], \
-            self.z80._HL_[0], self.z80._DE_[0], self.z80._BC_[0], self.z80._AF_[0], \
-            self.z80._HL[0], self.z80._DE[0], self.z80._BC[0], self.z80._IY[0], self.z80._IX[0], \
-            iff2, self.z80._R, self.z80._AF[0], self.z80._SP[0], im, border = self._sna_struct.unpack_from(msnafile, 0)
-        self.z80._IFF2 = (iff2 & 0b100) != 0
-        self.z80._IFF1 = self.z80._IFF2
+
+        self.z80.regI, \
+            regHLx, regDEx, regBCx, regAFx, \
+            regHL, regDE, regBC, self.z80.regIY, self.z80.regIX, \
+            iff2, self.z80.regR, regAF, self.z80.regSP, im, border = self._sna_struct.unpack_from(msnafile, 0)
+        self.z80.ffIFF2 = (iff2 & 0b100) != 0
+        self.z80.ffIFF1 = self.z80.ffIFF2
         if im == 0:
-            self.z80._IM = IM0
+            self.z80.modeINT = IM0
         elif im == 1:
-            self.z80._IM = IM1
+            self.z80.modeINT = IM1
         else:
-            self.z80._IM = IM2
-        self.z80.setflags()
-        self.z80.ports.port_out(254, (border % 8))  # border
+            self.z80.modeINT = IM2
+
+        self.z80.set_reg_HLx(regHLx)
+        self.z80.set_reg_DEx(regDEx)
+        self.z80.set_reg_BCx(regBCx)
+        self.z80.set_reg_HL(regHL)
+        self.z80.set_reg_DE(regDE)
+        self.z80.set_reg_BC(regBC)
+
+        self.z80.set_reg_Fx(regAFx & 0xff)
+        self.z80.regAx = (regAFx >> 8) & 0xff
+
+        self.z80.set_flags(regAF & 0xff)
+        self.z80.regA = (regAF >> 8) & 0xff
+
+        self.ports.out_port(254, (border % 8))  # border
         self.z80.memory.mem[16384:] = msnafile[27:]
-        self.z80.poppc()
+
+        self.z80.regPC = self.z80.pop()  # self.z80.poppc()

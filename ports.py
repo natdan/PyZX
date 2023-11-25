@@ -74,14 +74,14 @@ class Ports:
     def spInFF(_port: int) -> int:
         return 0xff
 
-    def port_in(self, portnum: int) -> int:
+    def in_port(self, portnum: int) -> int:
         # print('port: ', portnum, type(portnum))
         for mask, value, _, _, _, fin, _ in self.PORTMAP:
             if portnum & mask == value & mask:
                 return fin(portnum) if fin else 0xff
         return 0xff
 
-    def port_out(self, portnum: int, data: int):
+    def out_port(self, portnum: int, data: int):
         for mask, value, _, _, _, _, fout in self.PORTMAP:
             if portnum & mask == value & mask:
                 if fout:
