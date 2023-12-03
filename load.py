@@ -252,4 +252,5 @@ class Load:
         self.ports.out_port(254, (border % 8))  # border
         self.z80.memory.mem[16384:] = msnafile[27:]
 
-        self.z80.regPC = self.z80.pop()  # self.z80.poppc()
+        # self.z80.regPC = self.z80.pop()  # self.z80.poppc()
+        self.z80.regPC = 0x72
