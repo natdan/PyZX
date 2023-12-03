@@ -41,7 +41,7 @@ class Z80:
 
         self.clock.tstates = 0
 
-        self.prefixOpcode = 0x00
+        self._prefixOpcode = 0x00
         self.execDone = False
 
         self.regA = 0
@@ -51,10 +51,10 @@ class Z80:
         self.regE = 0
         self.regH = 0
         self.regL = 0
-        self.sz5h3pnFlags = 0
+        self._sz5h3pnFlags = 0
         self.carryFlag = False
-        self.flagQ = False
-        self.lastFlagQ = False
+        self._flagQ = False
+        self._lastFlagQ = False
 
         self.regAx = 0
         self.regFx = 0
@@ -82,16 +82,16 @@ class Z80:
         self.pinReset = False
         self.memptr = 0
 
-        self.sz53n_addTable = [0] * 256
-        self.sz53pn_addTable = [0] * 256
-        self.sz53n_subTable = [0] * 256
-        self.sz53pn_subTable = [0] * 256
+        self._sz53n_addTable = [0] * 256
+        self._sz53pn_addTable = [0] * 256
+        self._sz53n_subTable = [0] * 256
+        self._sz53pn_subTable = [0] * 256
 
         self.breakpointAt = [False] * 65536
 
         for idx in range(256):
             if idx > 0x7f:
-                self.sz53n_addTable[idx] |= SIGN_MASK
+                self._sz53n_addTable[idx] |= SIGN_MASK
 
             evenBits = True
             mask = 0x01
@@ -100,22 +100,22 @@ class Z80:
                     evenBits = not evenBits
                 mask = mask << 1
 
-            self.sz53n_addTable[idx] |= (idx & FLAG_53_MASK)
-            self.sz53n_subTable[idx] = self.sz53n_addTable[idx] | ADDSUB_MASK
+            self._sz53n_addTable[idx] |= (idx & FLAG_53_MASK)
+            self._sz53n_subTable[idx] = self._sz53n_addTable[idx] | ADDSUB_MASK
 
             if evenBits:
-                self.sz53pn_addTable[idx] = self.sz53n_addTable[idx] | PARITY_MASK
-                self.sz53pn_subTable[idx] = self.sz53n_subTable[idx] | PARITY_MASK
+                self._sz53pn_addTable[idx] = self._sz53n_addTable[idx] | PARITY_MASK
+                self._sz53pn_subTable[idx] = self._sz53n_subTable[idx] | PARITY_MASK
             else:
-                self.sz53pn_addTable[idx] = self.sz53n_addTable[idx]
-                self.sz53pn_subTable[idx] = self.sz53n_subTable[idx]
+                self._sz53pn_addTable[idx] = self._sz53n_addTable[idx]
+                self._sz53pn_subTable[idx] = self._sz53n_subTable[idx]
 
-        self.sz53n_addTable[0] |= ZERO_MASK
-        self.sz53pn_addTable[0] |= ZERO_MASK
-        self.sz53n_subTable[0] |= ZERO_MASK
-        self.sz53pn_subTable[0] |= ZERO_MASK
+        self._sz53n_addTable[0] |= ZERO_MASK
+        self._sz53pn_addTable[0] |= ZERO_MASK
+        self._sz53n_subTable[0] |= ZERO_MASK
+        self._sz53pn_subTable[0] |= ZERO_MASK
 
-        self.main_cmds = {
+        self._main_cmds = {
             0x00: self.nop, 0x08: self.ex_af_af, 0x10: self.djnz, 0x18: self.jr, 0x20: self.jrnz, 0x28: self.jrz, 0x30: self.jrnc, 0x38: self.jrc,
             0x01: self.ldbcnn, 0x09: self.addhlbc, 0x11: self.lddenn, 0x19: self.addhlde, 0x21: self.ldhlnn, 0x29: self.addhlhl, 0x31: self.ldspnn, 0x39: self.addhlsp,
             0x02: self.ldtobca, 0x0a: self.ldafrombc, 0x12: self.ldtodea, 0x1a: self.ldafromde, 0x22: self.ldtonnhl, 0x2a: self.ldhlfromnn, 0x32: self.ldtonna, 0x3a: self.ldafromnn,
@@ -261,7 +261,7 @@ class Z80:
         }
 
     def interruption(self) -> None:
-        self.lastFlagQ = False
+        self._lastFlagQ = False
         self.halted = False
 
         self.bus_access.interrupt_handling_time(7)
@@ -275,7 +275,7 @@ class Z80:
         self.memptr = self.regPC
 
     def nmi(self) -> None:
-        self.lastFlagQ = False
+        self._lastFlagQ = False
         self.halted = False
 
         self.bus_access.fetch_opcode(self.regPC)
@@ -286,26 +286,26 @@ class Z80:
         self.push(self.regPC)
         self.regPC = self.memptr = 0x0066
 
-    def adjustINxROUTxRFlags(self):
-        self.sz5h3pnFlags &= ~FLAG_53_MASK
-        self.sz5h3pnFlags |= (self.regPC >> 8) & FLAG_53_MASK
+    def _adjust_inxRoutxRFlags(self):
+        self._sz5h3pnFlags &= ~FLAG_53_MASK
+        self._sz5h3pnFlags |= (self.regPC >> 8) & FLAG_53_MASK
 
-        pf = self.sz5h3pnFlags & PARITY_MASK
+        pf = self._sz5h3pnFlags & PARITY_MASK
         if self.carryFlag:
-            addsub = 1 - (self.sz5h3pnFlags & ADDSUB_MASK)
-            pf ^= self.sz53pn_addTable[(self.regB + addsub) & 0x07] ^ PARITY_MASK
+            addsub = 1 - (self._sz5h3pnFlags & ADDSUB_MASK)
+            pf ^= self._sz53pn_addTable[(self.regB + addsub) & 0x07] ^ PARITY_MASK
             if (self.regB & 0x0F) == (0x00 if addsub != 1 else 0x0F):
-                self.sz5h3pnFlags |= HALFCARRY_MASK
+                self._sz5h3pnFlags |= HALFCARRY_MASK
             else:
-                self.sz5h3pnFlags &= ~HALFCARRY_MASK
+                self._sz5h3pnFlags &= ~HALFCARRY_MASK
         else:
-            pf ^= self.sz53pn_addTable[self.regB & 0x07] ^ PARITY_MASK
-            self.sz5h3pnFlags &= ~HALFCARRY_MASK
+            pf ^= self._sz53pn_addTable[self.regB & 0x07] ^ PARITY_MASK
+            self._sz5h3pnFlags &= ~HALFCARRY_MASK
 
         if (pf & PARITY_MASK) == PARITY_MASK:
-            self.sz5h3pnFlags |= PARITY_MASK
+            self._sz5h3pnFlags |= PARITY_MASK
         else:
-            self.sz5h3pnFlags &= ~PARITY_MASK
+            self._sz5h3pnFlags &= ~PARITY_MASK
 
     def execute(self, states_limit: int) -> None:
 
@@ -322,39 +322,39 @@ class Z80:
             if not self.halted:
                 self.regPC = (self.regPC + 1) & 0xffff
 
-                if self.prefixOpcode == 0x00:
-                    self.flagQ = self.pendingEI = False
-                    self.main_cmds[opcode]()
-                elif self.prefixOpcode == 0xDD:
-                    self.prefixOpcode = 0
+                if self._prefixOpcode == 0x00:
+                    self._flagQ = self.pendingEI = False
+                    self._main_cmds[opcode]()
+                elif self._prefixOpcode == 0xDD:
+                    self._prefixOpcode = 0
 
                     code = self._ixiydict.get(opcode)
                     if code is None:
-                        self.main_cmds[opcode]()
+                        self._main_cmds[opcode]()
                     else:
                         self.regIX = code(self.regIX)
 
-                elif self.prefixOpcode == 0xED:
-                    self.prefixOpcode = 0
+                elif self._prefixOpcode == 0xED:
+                    self._prefixOpcode = 0
                     code = self._eddict.get(opcode)
                     if code is not None:
                         code()
-                elif self.prefixOpcode == 0xFD:
-                    self.prefixOpcode = 0
+                elif self._prefixOpcode == 0xFD:
+                    self._prefixOpcode = 0
 
                     code = self._ixiydict.get(opcode)
                     if code is None:
-                        self.main_cmds[opcode]()
+                        self._main_cmds[opcode]()
                     else:
                         self.regIY = code(self.regIY)
                 else:
                     pass
                     # log.error(String.format("ERROR!: prefixOpcode = %02x, opCode = %02x", prefixOpcode, opCode));
 
-                if self.prefixOpcode != 0x00:
+                if self._prefixOpcode != 0x00:
                     continue
 
-                self.lastFlagQ = self.flagQ
+                self._lastFlagQ = self._flagQ
 
                 # if execDone:
                 #     NotifyImpl.execDone();
@@ -371,8 +371,9 @@ class Z80:
             #     self.show_debug_info = True
 
     def show_registers(self):
-        print(f"PC: 0x{self.regPC:04x}  "
-              f"OPCODE: {self.memory.peekb(self.regPC):#02x}({self.memory.peekb(self.regPC):03d}) "
+        print(f"PC: 0x{self.regPC:04x} "
+              f"SP: 0x{self.regSP:04x} "
+              f"OPCODE: {self.memory.peekb(self.regPC):02x}({self.memory.peekb(self.regPC):03d}) "
               f"A:0x{self.regA:02x} "
               f"HL:0x{self.get_reg_HL():04x} "
               f"BC:0x{self.get_reg_BC():04x} "
@@ -396,7 +397,7 @@ class Z80:
               f"{self.memory.peekb(self.regPC + 4):02x}, "
               f"{self.memory.peekb(self.regPC + 5):02x}, "
               f"{self.memory.peekb(self.regPC + 6):02x}, "
-              f"{self.memory.peekb(self.regPC + 7):02x} ")
+              f"{self.memory.peekb(self.regPC + 7):02x}")
 
     def reset(self) -> None:
         if self.pinReset:
@@ -428,8 +429,8 @@ class Z80:
         self.activeINT = False
         self.halted = False
         self.modeINT = IM0
-        self.lastFlagQ = False
-        self.prefixOpcode = 0x00
+        self._lastFlagQ = False
+        self._prefixOpcode = 0x00
 
     def set_reg_A(self, value: int) -> None:
         self.regA = value & 0xff
@@ -477,12 +478,12 @@ class Z80:
         self.regLx = value & 0xff
 
     def get_reg_AF(self) -> int:
-        return (self.regA << 8) | (self.sz5h3pnFlags | CARRY_MASK if self.carryFlag else self.sz5h3pnFlags)
+        return (self.regA << 8) | (self._sz5h3pnFlags | CARRY_MASK if self.carryFlag else self._sz5h3pnFlags)
 
     def set_reg_AF(self, word: int) -> None:
         self.regA = (word >> 8) & 0xff
 
-        self.sz5h3pnFlags = word & 0xfe
+        self._sz5h3pnFlags = word & 0xfe
         self.carryFlag = (word & CARRY_MASK) != 0
 
     def get_reg_AFx(self) -> int: return (self.regAx << 8) | self.regFx
@@ -619,66 +620,66 @@ class Z80:
     def set_mem_ptr(self, word) -> None:
         self.memptr = word & 0xffff
 
-    def is_add_sub_flag(self) -> bool: return (self.sz5h3pnFlags & ADDSUB_MASK) != 0
+    def is_add_sub_flag(self) -> bool: return (self._sz5h3pnFlags & ADDSUB_MASK) != 0
 
     def set_add_sub_flag(self, state: bool) -> None:
         if state:
-            self.sz5h3pnFlags |= ADDSUB_MASK
+            self._sz5h3pnFlags |= ADDSUB_MASK
         else:
-            self.sz5h3pnFlags &= ~ADDSUB_MASK
+            self._sz5h3pnFlags &= ~ADDSUB_MASK
 
-    def is_par_over_flag(self) -> bool: return (self.sz5h3pnFlags & PARITY_MASK) != 0
+    def is_par_over_flag(self) -> bool: return (self._sz5h3pnFlags & PARITY_MASK) != 0
 
     def set_par_over_flag(self, state: bool) -> None:
         if state:
-            self.sz5h3pnFlags |= PARITY_MASK
+            self._sz5h3pnFlags |= PARITY_MASK
         else:
-            self.sz5h3pnFlags &= ~PARITY_MASK
+            self._sz5h3pnFlags &= ~PARITY_MASK
 
-    def is_bit3_flag(self) -> bool: return (self.sz5h3pnFlags & BIT3_MASK) != 0
+    def is_bit3_flag(self) -> bool: return (self._sz5h3pnFlags & BIT3_MASK) != 0
 
     def set_bit3_fag(self, state: int) -> None:
         if state:
-            self.sz5h3pnFlags |= BIT3_MASK
+            self._sz5h3pnFlags |= BIT3_MASK
         else:
-            self.sz5h3pnFlags &= ~BIT3_MASK
+            self._sz5h3pnFlags &= ~BIT3_MASK
 
-    def is_half_carry_flag(self): return (self.sz5h3pnFlags & HALFCARRY_MASK) != 0
+    def is_half_carry_flag(self): return (self._sz5h3pnFlags & HALFCARRY_MASK) != 0
 
     def set_half_carry_flag(self, state: bool) -> None:
         if state:
-            self.sz5h3pnFlags |= HALFCARRY_MASK
+            self._sz5h3pnFlags |= HALFCARRY_MASK
         else:
-            self.sz5h3pnFlags &= ~HALFCARRY_MASK
+            self._sz5h3pnFlags &= ~HALFCARRY_MASK
 
-    def is_bit5_flag(self) -> bool: return (self.sz5h3pnFlags & BIT5_MASK) != 0
+    def is_bit5_flag(self) -> bool: return (self._sz5h3pnFlags & BIT5_MASK) != 0
 
     def set_bit5_flag(self, state: bool) -> None:
         if state:
-            self.sz5h3pnFlags |= BIT5_MASK
+            self._sz5h3pnFlags |= BIT5_MASK
         else:
-            self.sz5h3pnFlags &= ~BIT5_MASK
+            self._sz5h3pnFlags &= ~BIT5_MASK
 
-    def is_zero_flag(self) -> bool: return (self.sz5h3pnFlags & ZERO_MASK) != 0
+    def is_zero_flag(self) -> bool: return (self._sz5h3pnFlags & ZERO_MASK) != 0
 
     def set_zero_flag(self, state: bool) -> None:
         if state:
-            self.sz5h3pnFlags |= ZERO_MASK
+            self._sz5h3pnFlags |= ZERO_MASK
         else:
-            self.sz5h3pnFlags &= ~ZERO_MASK
+            self._sz5h3pnFlags &= ~ZERO_MASK
 
-    def is_sign_flag(self) -> bool: return self.sz5h3pnFlags >= SIGN_MASK
+    def is_sign_flag(self) -> bool: return self._sz5h3pnFlags >= SIGN_MASK
 
     def set_sign_flag(self, state) -> None:
         if state:
-            self.sz5h3pnFlags |= SIGN_MASK
+            self._sz5h3pnFlags |= SIGN_MASK
         else:
-            self.sz5h3pnFlags &= ~SIGN_MASK
+            self._sz5h3pnFlags &= ~SIGN_MASK
 
-    def get_flags(self) -> int: return self.sz5h3pnFlags | CARRY_MASK if self.carryFlag else self.sz5h3pnFlags
+    def get_flags(self) -> int: return self._sz5h3pnFlags | CARRY_MASK if self.carryFlag else self._sz5h3pnFlags
 
     def set_flags(self, regF: int) -> None:
-        self.sz5h3pnFlags = regF & 0xfe
+        self._sz5h3pnFlags = regF & 0xfe
         self.carryFlag = (regF & CARRY_MASK) != 0
 
     def trigger_NMI(self) -> None:
@@ -690,8 +691,8 @@ class Z80:
         if self.carryFlag:
             oper8 |= CARRY_MASK
 
-        self.sz5h3pnFlags = self.sz53pn_addTable[oper8]
-        self.flagQ = True
+        self._sz5h3pnFlags = self._sz53pn_addTable[oper8]
+        self._flagQ = True
         return oper8
 
     def rl(self, oper8: int) -> int:
@@ -701,22 +702,22 @@ class Z80:
         if carry:
             oper8 |= CARRY_MASK
 
-        self.sz5h3pnFlags = self.sz53pn_addTable[oper8]
-        self.flagQ = True
+        self._sz5h3pnFlags = self._sz53pn_addTable[oper8]
+        self._flagQ = True
         return oper8
 
     def sla(self, oper8: int) -> int:
         self.carryFlag = (oper8 > 0x7f)
         oper8 = (oper8 << 1) & 0xfe
-        self.sz5h3pnFlags = self.sz53pn_addTable[oper8]
-        self.flagQ = True
+        self._sz5h3pnFlags = self._sz53pn_addTable[oper8]
+        self._flagQ = True
         return oper8
 
     def sll(self, oper8: int) -> int:
         self.carryFlag = (oper8 > 0x7f)
         oper8 = ((oper8 << 1) | CARRY_MASK) & 0xff
-        self.sz5h3pnFlags = self.sz53pn_addTable[oper8]
-        self.flagQ = True
+        self._sz5h3pnFlags = self._sz53pn_addTable[oper8]
+        self._flagQ = True
         return oper8
 
     def rrc(self, oper8: int) -> int:
@@ -725,8 +726,8 @@ class Z80:
         if self.carryFlag:
             oper8 |= SIGN_MASK
 
-        self.sz5h3pnFlags = self.sz53pn_addTable[oper8]
-        self.flagQ = True
+        self._sz5h3pnFlags = self._sz53pn_addTable[oper8]
+        self._flagQ = True
         return oper8
 
     def rr(self, oper8) -> int:
@@ -736,8 +737,8 @@ class Z80:
         if carry:
             oper8 |= SIGN_MASK
 
-        self.sz5h3pnFlags = self.sz53pn_addTable[oper8]
-        self.flagQ = True
+        self._sz5h3pnFlags = self._sz53pn_addTable[oper8]
+        self._flagQ = True
         return oper8
 
     def rrd(self) -> None:
@@ -747,9 +748,9 @@ class Z80:
         self.regA = (self.regA & 0xf0) | (memHL & 0x0f)
         self.bus_access.address_on_bus(self.memptr, 4)
         self.bus_access.pokeb(self.memptr, (memHL >> 4) | aux)
-        self.sz5h3pnFlags = self.sz53pn_addTable[self.regA]
+        self._sz5h3pnFlags = self._sz53pn_addTable[self.regA]
         self.memptr += 1
-        self.flagQ = True
+        self._flagQ = True
 
     def rld(self) -> None:
         aux = self.regA & 0x0f
@@ -758,51 +759,51 @@ class Z80:
         self.regA = (self.regA & 0xf0) | (memHL >> 4)
         self.bus_access.address_on_bus(self.memptr, 4)
         self.bus_access.pokeb(self.memptr, ((memHL << 4) | aux) & 0xff)
-        self.sz5h3pnFlags = self.sz53pn_addTable[self.regA]
+        self._sz5h3pnFlags = self._sz53pn_addTable[self.regA]
         self.memptr += 1
-        self.flagQ = True
+        self._flagQ = True
 
     def sra(self, oper8: int) -> int:
         sign = oper8 & SIGN_MASK
         self.carryFlag = (oper8 & CARRY_MASK) != 0
         oper8 = (oper8 >> 1) | sign
-        self.sz5h3pnFlags = self.sz53pn_addTable[oper8]
-        self.flagQ = True
+        self._sz5h3pnFlags = self._sz53pn_addTable[oper8]
+        self._flagQ = True
         return oper8
 
     def srl(self, oper8: int) -> int:
         self.carryFlag = (oper8 & CARRY_MASK) != 0
         oper8 >>= 1
-        self.sz5h3pnFlags = self.sz53pn_addTable[oper8]
-        self.flagQ = True
+        self._sz5h3pnFlags = self._sz53pn_addTable[oper8]
+        self._flagQ = True
         return oper8
 
     def inc8(self, oper8: int) -> int:
         oper8 = (oper8 + 1) & 0xff
 
-        self.sz5h3pnFlags = self.sz53n_addTable[oper8]
+        self._sz5h3pnFlags = self._sz53n_addTable[oper8]
 
         if (oper8 & 0x0f) == 0:
-            self.sz5h3pnFlags |= HALFCARRY_MASK
+            self._sz5h3pnFlags |= HALFCARRY_MASK
 
         if oper8 == 0x80:
-            self.sz5h3pnFlags |= OVERFLOW_MASK
+            self._sz5h3pnFlags |= OVERFLOW_MASK
 
-        self.flagQ = True
+        self._flagQ = True
         return oper8
 
     def dec8(self, oper8: int) -> int:
         oper8 = (oper8 - 1) & 0xff
 
-        self.sz5h3pnFlags = self.sz53n_subTable[oper8]
+        self._sz5h3pnFlags = self._sz53n_subTable[oper8]
 
         if (oper8 & 0x0f) == 0x0f:
-            self.sz5h3pnFlags |= HALFCARRY_MASK
+            self._sz5h3pnFlags |= HALFCARRY_MASK
 
         if oper8 == 0x7f:
-            self.sz5h3pnFlags |= OVERFLOW_MASK
+            self._sz5h3pnFlags |= OVERFLOW_MASK
 
-        self.flagQ = True
+        self._flagQ = True
         return oper8
 
     def add(self, oper8: int) -> None:
@@ -810,16 +811,16 @@ class Z80:
 
         self.carryFlag = res > 0xff
         res &= 0xff
-        self.sz5h3pnFlags = self.sz53n_addTable[res]
+        self._sz5h3pnFlags = self._sz53n_addTable[res]
 
         if (res & 0x0f) < (self.regA & 0x0f):
-            self.sz5h3pnFlags |= HALFCARRY_MASK
+            self._sz5h3pnFlags |= HALFCARRY_MASK
 
         if ((self.regA ^ ~oper8) & (self.regA ^ res)) > 0x7f:
-            self.sz5h3pnFlags |= OVERFLOW_MASK
+            self._sz5h3pnFlags |= OVERFLOW_MASK
 
         self.regA = res
-        self.flagQ = True
+        self._flagQ = True
 
     def adc(self, oper8: int) -> None:
         res = self.regA + oper8
@@ -829,29 +830,29 @@ class Z80:
 
         self.carryFlag = res > 0xff
         res &= 0xff
-        self.sz5h3pnFlags = self.sz53n_addTable[res]
+        self._sz5h3pnFlags = self._sz53n_addTable[res]
 
         if ((self.regA ^ oper8 ^ res) & 0x10) != 0:
-            self.sz5h3pnFlags |= HALFCARRY_MASK
+            self._sz5h3pnFlags |= HALFCARRY_MASK
 
         if ((self.regA ^ ~oper8) & (self.regA ^ res)) > 0x7f:
-            self.sz5h3pnFlags |= OVERFLOW_MASK
+            self._sz5h3pnFlags |= OVERFLOW_MASK
 
         self.regA = res
-        self.flagQ = True
+        self._flagQ = True
 
     def add16(self, reg16: int, oper16: int) -> int:
         oper16 += reg16
 
         self.carryFlag = oper16 > 0xffff
-        self.sz5h3pnFlags = (self.sz5h3pnFlags & FLAG_SZP_MASK) | ((oper16 >> 8) & FLAG_53_MASK)
+        self._sz5h3pnFlags = (self._sz5h3pnFlags & FLAG_SZP_MASK) | ((oper16 >> 8) & FLAG_53_MASK)
         oper16 &= 0xffff
 
         if (oper16 & 0x0fff) < (reg16 & 0x0fff):
-            self.sz5h3pnFlags |= HALFCARRY_MASK
+            self._sz5h3pnFlags |= HALFCARRY_MASK
 
         self.memptr = reg16 + 1
-        self.flagQ = True
+        self._flagQ = True
         return oper16
 
     def adc16(self, reg16: int) -> None:
@@ -866,33 +867,33 @@ class Z80:
         res &= 0xffff
         self.set_reg_HL(res)
 
-        self.sz5h3pnFlags = self.sz53n_addTable[self.regH]
+        self._sz5h3pnFlags = self._sz53n_addTable[self.regH]
         if res != 0:
-            self.sz5h3pnFlags &= ~ZERO_MASK
+            self._sz5h3pnFlags &= ~ZERO_MASK
 
         if ((res ^ regHL ^ reg16) & 0x1000) != 0:
-            self.sz5h3pnFlags |= HALFCARRY_MASK
+            self._sz5h3pnFlags |= HALFCARRY_MASK
 
         if ((regHL ^ ~reg16) & (regHL ^ res)) > 0x7fff:
-            self.sz5h3pnFlags |= OVERFLOW_MASK
+            self._sz5h3pnFlags |= OVERFLOW_MASK
 
-        self.flagQ = True
+        self._flagQ = True
 
     def sub(self, oper8: int) -> None:
         res = self.regA - oper8
 
         self.carryFlag = res < 0
         res &= 0xff
-        self.sz5h3pnFlags = self.sz53n_subTable[res]
+        self._sz5h3pnFlags = self._sz53n_subTable[res]
 
         if (res & 0x0f) > (self.regA & 0x0f):
-            self.sz5h3pnFlags |= HALFCARRY_MASK
+            self._sz5h3pnFlags |= HALFCARRY_MASK
 
         if ((self.regA ^ oper8) & (self.regA ^ res)) > 0x7f:
-            self.sz5h3pnFlags |= OVERFLOW_MASK
+            self._sz5h3pnFlags |= OVERFLOW_MASK
 
         self.regA = res
-        self.flagQ = True
+        self._flagQ = True
 
     def sbc(self, oper8: int) -> None:
         res = self.regA - oper8
@@ -902,16 +903,16 @@ class Z80:
 
         self.carryFlag = res < 0
         res &= 0xff
-        self.sz5h3pnFlags = self.sz53n_subTable[res]
+        self._sz5h3pnFlags = self._sz53n_subTable[res]
 
         if ((self.regA ^ oper8 ^ res) & 0x10) != 0:
-            self.sz5h3pnFlags |= HALFCARRY_MASK
+            self._sz5h3pnFlags |= HALFCARRY_MASK
 
         if ((self.regA ^ oper8) & (self.regA ^ res)) > 0x7f:
-            self.sz5h3pnFlags |= OVERFLOW_MASK
+            self._sz5h3pnFlags |= OVERFLOW_MASK
 
         self.regA = res
-        self.flagQ = True
+        self._flagQ = True
 
     def sbc16(self, reg16: int) -> None:
         regHL = self.get_reg_HL()
@@ -925,35 +926,35 @@ class Z80:
         res &= 0xffff
         self.set_reg_HL(res)
 
-        self.sz5h3pnFlags = self.sz53n_subTable[self.regH]
+        self._sz5h3pnFlags = self._sz53n_subTable[self.regH]
         if res != 0:
-            self.sz5h3pnFlags &= ~ZERO_MASK
+            self._sz5h3pnFlags &= ~ZERO_MASK
 
         if ((res ^ regHL ^ reg16) & 0x1000) != 0:
-            self.sz5h3pnFlags |= HALFCARRY_MASK
+            self._sz5h3pnFlags |= HALFCARRY_MASK
 
         if ((regHL ^ reg16) & (regHL ^ res)) > 0x7fff:
-            self.sz5h3pnFlags |= OVERFLOW_MASK
+            self._sz5h3pnFlags |= OVERFLOW_MASK
 
-        self.flagQ = True
+        self._flagQ = True
 
     def _and(self, oper8: int) -> None:
         self.regA &= oper8
         self.carryFlag = False
-        self.sz5h3pnFlags = self.sz53pn_addTable[self.regA] | HALFCARRY_MASK
-        self.flagQ = True
+        self._sz5h3pnFlags = self._sz53pn_addTable[self.regA] | HALFCARRY_MASK
+        self._flagQ = True
 
     def _xor(self, oper8: int) -> None:
         self.regA = (self.regA ^ oper8) & 0xff
         self.carryFlag = False
-        self.sz5h3pnFlags = self.sz53pn_addTable[self.regA]
-        self.flagQ = True
+        self._sz5h3pnFlags = self._sz53pn_addTable[self.regA]
+        self._flagQ = True
 
     def _or(self, oper8: int) -> None:
         self.regA = (self.regA | oper8) & 0xff
         self.carryFlag = False
-        self.sz5h3pnFlags = self.sz53pn_addTable[self.regA]
-        self.flagQ = True
+        self._sz5h3pnFlags = self._sz53pn_addTable[self.regA]
+        self._flagQ = True
 
     def cp(self, oper8: int) -> None:
         res = self.regA - (oper8 & 0xff)
@@ -961,22 +962,22 @@ class Z80:
         self.carryFlag = res < 0
         res &= 0xff
 
-        self.sz5h3pnFlags = (self.sz53n_addTable[oper8] & FLAG_53_MASK) \
-            | (self.sz53n_subTable[res] & FLAG_SZHN_MASK)
+        self._sz5h3pnFlags = (self._sz53n_addTable[oper8] & FLAG_53_MASK) \
+                             | (self._sz53n_subTable[res] & FLAG_SZHN_MASK)
 
         if (res & 0x0f) > (self.regA & 0x0f):
-            self.sz5h3pnFlags |= HALFCARRY_MASK
+            self._sz5h3pnFlags |= HALFCARRY_MASK
 
         if ((self.regA ^ oper8) & (self.regA ^ res)) > 0x7f:
-            self.sz5h3pnFlags |= OVERFLOW_MASK
+            self._sz5h3pnFlags |= OVERFLOW_MASK
 
-        self.flagQ = True
+        self._flagQ = True
 
     def daa(self) -> None:
         suma = 0
         carry = self.carryFlag
 
-        if (self.sz5h3pnFlags & HALFCARRY_MASK) != 0 or (self.regA & 0x0f) > 0x09:
+        if (self._sz5h3pnFlags & HALFCARRY_MASK) != 0 or (self.regA & 0x0f) > 0x09:
             suma = 6
 
         if carry or (self.regA > 0x99):
@@ -985,15 +986,15 @@ class Z80:
         if self.regA > 0x99:
             carry = True
 
-        if (self.sz5h3pnFlags & ADDSUB_MASK) != 0:
+        if (self._sz5h3pnFlags & ADDSUB_MASK) != 0:
             self.sub(suma)
-            self.sz5h3pnFlags = (self.sz5h3pnFlags & HALFCARRY_MASK) | self.sz53pn_subTable[self.regA]
+            self._sz5h3pnFlags = (self._sz5h3pnFlags & HALFCARRY_MASK) | self._sz53pn_subTable[self.regA]
         else:
             self.add(suma)
-            self.sz5h3pnFlags = (self.sz5h3pnFlags & HALFCARRY_MASK) | self.sz53pn_addTable[self.regA]
+            self._sz5h3pnFlags = (self._sz5h3pnFlags & HALFCARRY_MASK) | self._sz53pn_addTable[self.regA]
 
         self.carryFlag = carry
-        self.flagQ = True
+        self._flagQ = True
 
     def pop(self) -> int:
         word = self.bus_access.peekw(self.regSP)
@@ -1017,15 +1018,15 @@ class Z80:
         self.dec_reg_BC()
         work8 += self.regA
 
-        self.sz5h3pnFlags = (self.sz5h3pnFlags & FLAG_SZ_MASK) | (work8 & BIT3_MASK)
+        self._sz5h3pnFlags = (self._sz5h3pnFlags & FLAG_SZ_MASK) | (work8 & BIT3_MASK)
 
         if (work8 & ADDSUB_MASK) != 0:
-            self.sz5h3pnFlags |= BIT5_MASK
+            self._sz5h3pnFlags |= BIT5_MASK
 
         if self.regC != 0 or self.regB != 0:
-            self.sz5h3pnFlags |= PARITY_MASK
+            self._sz5h3pnFlags |= PARITY_MASK
 
-        self.flagQ = True
+        self._flagQ = True
 
     def ldd(self) -> None:
         work8 = self.bus_access.peekb(self.get_reg_HL())
@@ -1038,15 +1039,15 @@ class Z80:
         self.dec_reg_BC()
         work8 += self.regA
 
-        self.sz5h3pnFlags = (self.sz5h3pnFlags & FLAG_SZ_MASK) | (work8 & BIT3_MASK)
+        self._sz5h3pnFlags = (self._sz5h3pnFlags & FLAG_SZ_MASK) | (work8 & BIT3_MASK)
 
         if (work8 & ADDSUB_MASK) != 0:
-            self.sz5h3pnFlags |= BIT5_MASK
+            self._sz5h3pnFlags |= BIT5_MASK
 
         if self.regC != 0 or self.regB != 0:
-            self.sz5h3pnFlags |= PARITY_MASK
+            self._sz5h3pnFlags |= PARITY_MASK
 
-        self.flagQ = True
+        self._flagQ = True
 
     def cpi(self) -> None:
         regHL = self.get_reg_HL()
@@ -1058,17 +1059,17 @@ class Z80:
         self.inc_reg_HL()
         self.dec_reg_BC()
 
-        memHL = self.regA - memHL - (1 if (self.sz5h3pnFlags & HALFCARRY_MASK) != 0 else 0)
-        self.sz5h3pnFlags = (self.sz5h3pnFlags & FLAG_SZHN_MASK) | (memHL & BIT3_MASK)
+        memHL = self.regA - memHL - (1 if (self._sz5h3pnFlags & HALFCARRY_MASK) != 0 else 0)
+        self._sz5h3pnFlags = (self._sz5h3pnFlags & FLAG_SZHN_MASK) | (memHL & BIT3_MASK)
 
         if (memHL & ADDSUB_MASK) != 0:
-            self.sz5h3pnFlags |= BIT5_MASK
+            self._sz5h3pnFlags |= BIT5_MASK
 
         if self.regC != 0 or self.regB != 0:
-            self.sz5h3pnFlags |= PARITY_MASK
+            self._sz5h3pnFlags |= PARITY_MASK
 
         self.memptr += 1
-        self.flagQ = True
+        self._flagQ = True
 
     def cpd(self) -> None:
         regHL = self.get_reg_HL()
@@ -1079,17 +1080,17 @@ class Z80:
         self.bus_access.address_on_bus(regHL, 5)
         self.dec_reg_HL()
         self.dec_reg_BC()
-        memHL = self.regA - memHL - (1 if (self.sz5h3pnFlags & HALFCARRY_MASK) != 0 else 0)
-        self.sz5h3pnFlags = (self.sz5h3pnFlags & FLAG_SZHN_MASK) | (memHL & BIT3_MASK)
+        memHL = self.regA - memHL - (1 if (self._sz5h3pnFlags & HALFCARRY_MASK) != 0 else 0)
+        self._sz5h3pnFlags = (self._sz5h3pnFlags & FLAG_SZHN_MASK) | (memHL & BIT3_MASK)
 
         if (memHL & ADDSUB_MASK) != 0:
-            self.sz5h3pnFlags |= BIT5_MASK
+            self._sz5h3pnFlags |= BIT5_MASK
 
         if self.regC != 0 or self.regB != 0:
-            self.sz5h3pnFlags |= PARITY_MASK
+            self._sz5h3pnFlags |= PARITY_MASK
 
         self.memptr -= 1
-        self.flagQ = True
+        self._flagQ = True
 
     def ini(self) -> None:
         self.memptr = self.get_reg_BC()
@@ -1103,22 +1104,22 @@ class Z80:
 
         self.inc_reg_HL()
 
-        self.sz5h3pnFlags = self.sz53pn_addTable[self.regB]
+        self._sz5h3pnFlags = self._sz53pn_addTable[self.regB]
         if work8 > 0x7f:
-            self.sz5h3pnFlags |= ADDSUB_MASK
+            self._sz5h3pnFlags |= ADDSUB_MASK
 
         self.carryFlag = False
         tmp = work8 + ((self.regC + 1) & 0xff)
         if tmp > 0xff:
-            self.sz5h3pnFlags |= HALFCARRY_MASK
+            self._sz5h3pnFlags |= HALFCARRY_MASK
             self.carryFlag = True
 
-        if (self.sz53pn_addTable[((tmp & 0x07) ^ self.regB)] & PARITY_MASK) == PARITY_MASK:
-            self.sz5h3pnFlags |= PARITY_MASK
+        if (self._sz53pn_addTable[((tmp & 0x07) ^ self.regB)] & PARITY_MASK) == PARITY_MASK:
+            self._sz5h3pnFlags |= PARITY_MASK
         else:
-            self.sz5h3pnFlags &= ~PARITY_MASK
+            self._sz5h3pnFlags &= ~PARITY_MASK
 
-        self.flagQ = True
+        self._flagQ = True
 
     def ind(self) -> None:
         self.memptr = self.get_reg_BC()
@@ -1132,23 +1133,23 @@ class Z80:
 
         self.dec_reg_HL()
 
-        self.sz5h3pnFlags = self.sz53pn_addTable[self.regB]
+        self._sz5h3pnFlags = self._sz53pn_addTable[self.regB]
         if work8 > 0x7f:
-            self.sz5h3pnFlags |= ADDSUB_MASK
+            self._sz5h3pnFlags |= ADDSUB_MASK
 
         self.carryFlag = False
 
         tmp = work8 + ((self.regC - 1) & 0xff)
         if tmp > 0xff:
-            self.sz5h3pnFlags |= HALFCARRY_MASK
+            self._sz5h3pnFlags |= HALFCARRY_MASK
             self.carryFlag = True
 
-        if (self.sz53pn_addTable[((tmp & 0x07) ^ self.regB)] & PARITY_MASK) == PARITY_MASK:
-            self.sz5h3pnFlags |= PARITY_MASK
+        if (self._sz53pn_addTable[((tmp & 0x07) ^ self.regB)] & PARITY_MASK) == PARITY_MASK:
+            self._sz5h3pnFlags |= PARITY_MASK
         else:
-            self.sz5h3pnFlags &= ~PARITY_MASK
+            self._sz5h3pnFlags &= ~PARITY_MASK
 
-        self.flagQ = True
+        self._flagQ = True
 
     def outi(self) -> None:
         self.bus_access.address_on_bus(self.get_pair_IR(), 1)
@@ -1164,18 +1165,18 @@ class Z80:
 
         self.carryFlag = False
         if work8 > 0x7f:
-            self.sz5h3pnFlags = self.sz53n_subTable[self.regB]
+            self._sz5h3pnFlags = self._sz53n_subTable[self.regB]
         else:
-            self.sz5h3pnFlags = self.sz53n_addTable[self.regB]
+            self._sz5h3pnFlags = self._sz53n_addTable[self.regB]
 
         if (self.regL + work8) > 0xff:
-            self.sz5h3pnFlags |= HALFCARRY_MASK
+            self._sz5h3pnFlags |= HALFCARRY_MASK
             self.carryFlag = True
 
-        if (self.sz53pn_addTable[(((self.regL + work8) & 0x07) ^ self.regB)] & PARITY_MASK) == PARITY_MASK:
-            self.sz5h3pnFlags |= PARITY_MASK
+        if (self._sz53pn_addTable[(((self.regL + work8) & 0x07) ^ self.regB)] & PARITY_MASK) == PARITY_MASK:
+            self._sz5h3pnFlags |= PARITY_MASK
 
-        self.flagQ = True
+        self._flagQ = True
 
     def outd(self) -> None:
         self.bus_access.address_on_bus(self.get_pair_IR(), 1)
@@ -1191,31 +1192,31 @@ class Z80:
 
         self.carryFlag = False
         if work8 > 0x7f:
-            self.sz5h3pnFlags = self.sz53n_subTable[self.regB]
+            self._sz5h3pnFlags = self._sz53n_subTable[self.regB]
         else:
-            self.sz5h3pnFlags = self.sz53n_addTable[self.regB]
+            self._sz5h3pnFlags = self._sz53n_addTable[self.regB]
 
         if (self.regL + work8) > 0xff:
-            self.sz5h3pnFlags |= HALFCARRY_MASK
+            self._sz5h3pnFlags |= HALFCARRY_MASK
             self.carryFlag = True
 
-        if (self.sz53pn_addTable[(((self.regL + work8) & 0x07) ^ self.regB)] & PARITY_MASK) == PARITY_MASK:
-            self.sz5h3pnFlags |= PARITY_MASK
+        if (self._sz53pn_addTable[(((self.regL + work8) & 0x07) ^ self.regB)] & PARITY_MASK) == PARITY_MASK:
+            self._sz5h3pnFlags |= PARITY_MASK
 
-        self.flagQ = True
+        self._flagQ = True
 
     def bit(self, mask: int, reg: int) -> None:
-        self.set_zero_flag((mask & reg) == 0)
+        zero_flag = (mask & reg) == 0
 
-        self.sz5h3pnFlags = (self.sz53n_addTable[reg] & ~FLAG_SZP_MASK) | HALFCARRY_MASK
+        self._sz5h3pnFlags = (self._sz53n_addTable[reg] & ~FLAG_SZP_MASK) | HALFCARRY_MASK
 
-        if self.is_zero_flag():
-            self.sz5h3pnFlags |= (PARITY_MASK | ZERO_MASK)
+        if zero_flag:
+            self._sz5h3pnFlags |= (PARITY_MASK | ZERO_MASK)
 
-        if mask == SIGN_MASK and not self.is_zero_flag():
-            self.sz5h3pnFlags |= SIGN_MASK
+        if mask == SIGN_MASK and not zero_flag:
+            self._sz5h3pnFlags |= SIGN_MASK
 
-        self.flagQ = True
+        self._flagQ = True
 
     @staticmethod
     def nop():
@@ -1275,7 +1276,7 @@ class Z80:
     
     def jrnz(self):
         offset = self.bus_access.peeksb(self.regPC)
-        if (self.sz5h3pnFlags & ZERO_MASK) == 0:
+        if (self._sz5h3pnFlags & ZERO_MASK) == 0:
             self.bus_access.address_on_bus(self.regPC, 5)
             self.regPC += offset
             self.memptr = self.regPC + 1
@@ -1284,7 +1285,7 @@ class Z80:
     
     def jrz(self):
         offset = self.bus_access.peeksb(self.regPC)
-        if (self.sz5h3pnFlags & ZERO_MASK) != 0:
+        if (self._sz5h3pnFlags & ZERO_MASK) != 0:
             self.bus_access.address_on_bus(self.regPC, 5)
             self.regPC += offset
             self.memptr = self.regPC + 1
@@ -1514,8 +1515,8 @@ class Z80:
         if self.carryFlag:
             self.regA |= CARRY_MASK
 
-        self.sz5h3pnFlags = (self.sz5h3pnFlags & FLAG_SZP_MASK) | (self.regA & FLAG_53_MASK)
-        self.flagQ = True
+        self._sz5h3pnFlags = (self._sz5h3pnFlags & FLAG_SZP_MASK) | (self.regA & FLAG_53_MASK)
+        self._flagQ = True
 
     # Rotate Left through Carry - alters H N C 3 5 flags (CHECKED)
     def rla(self):
@@ -1525,8 +1526,8 @@ class Z80:
         if oldCarry:
             self.regA |= CARRY_MASK
 
-        self.sz5h3pnFlags = (self.sz5h3pnFlags & FLAG_SZP_MASK) | (self.regA & FLAG_53_MASK)
-        self.flagQ = True
+        self._sz5h3pnFlags = (self._sz5h3pnFlags & FLAG_SZP_MASK) | (self.regA & FLAG_53_MASK)
+        self._flagQ = True
     
     # Rotate Right - alters H N C 3 5 flags (CHECKED)
     def rrca(self):
@@ -1535,8 +1536,8 @@ class Z80:
         if self.carryFlag:
             self.regA |= SIGN_MASK
 
-        self.sz5h3pnFlags = (self.sz5h3pnFlags & FLAG_SZP_MASK) | (self.regA & FLAG_53_MASK)
-        self.flagQ = True
+        self._sz5h3pnFlags = (self._sz5h3pnFlags & FLAG_SZP_MASK) | (self.regA & FLAG_53_MASK)
+        self._flagQ = True
 
     # Rotate Right through Carry - alters H N C 3 5 flags (CHECKED)
     def rra(self):
@@ -1546,8 +1547,8 @@ class Z80:
         if oldCarry:
             self.regA |= SIGN_MASK
 
-        self.sz5h3pnFlags = (self.sz5h3pnFlags & FLAG_SZP_MASK) | (self.regA & FLAG_53_MASK)
-        self.flagQ = True
+        self._sz5h3pnFlags = (self._sz5h3pnFlags & FLAG_SZP_MASK) | (self.regA & FLAG_53_MASK)
+        self._flagQ = True
     
     # Decimal Adjust Accumulator - alters all flags (CHECKED)
     # def daa(self):
@@ -1577,26 +1578,26 @@ class Z80:
     # One's complement - alters N H 3 5 flags (CHECKED)
     def cpla(self):
         self.regA ^= 0xff
-        self.sz5h3pnFlags = (self.sz5h3pnFlags & FLAG_SZP_MASK) | HALFCARRY_MASK | (self.regA & FLAG_53_MASK) | ADDSUB_MASK
+        self._sz5h3pnFlags = (self._sz5h3pnFlags & FLAG_SZP_MASK) | HALFCARRY_MASK | (self.regA & FLAG_53_MASK) | ADDSUB_MASK
 
-        self.flagQ = True
+        self._flagQ = True
     
     # self.set carry flag - alters N H 3 5 C flags (CHECKED)
     def scf(self):
-        regQ = self.sz5h3pnFlags if self.lastFlagQ else 0
+        regQ = self._sz5h3pnFlags if self._lastFlagQ else 0
         self.carryFlag = True
-        self.sz5h3pnFlags = (self.sz5h3pnFlags & FLAG_SZP_MASK) | (((regQ ^ self.sz5h3pnFlags) | self.regA) & FLAG_53_MASK)
-        self.flagQ = True
+        self._sz5h3pnFlags = (self._sz5h3pnFlags & FLAG_SZP_MASK) | (((regQ ^ self._sz5h3pnFlags) | self.regA) & FLAG_53_MASK)
+        self._flagQ = True
     
     # Complement carry flag - alters N 3 5 C flags (CHECKED)
     def ccf(self):
-        regQ = self.sz5h3pnFlags if self.lastFlagQ else 0
-        self.sz5h3pnFlags = (self.sz5h3pnFlags & FLAG_SZP_MASK) | (((regQ ^ self.sz5h3pnFlags) | self.regA) & FLAG_53_MASK)
+        regQ = self._sz5h3pnFlags if self._lastFlagQ else 0
+        self._sz5h3pnFlags = (self._sz5h3pnFlags & FLAG_SZP_MASK) | (((regQ ^ self._sz5h3pnFlags) | self.regA) & FLAG_53_MASK)
         if self.carryFlag:
-            self.sz5h3pnFlags |= HALFCARRY_MASK
+            self._sz5h3pnFlags |= HALFCARRY_MASK
 
         self.carryFlag = not self.carryFlag
-        self.flagQ = True
+        self._flagQ = True
     
     # LD B,*
     @staticmethod
@@ -2010,12 +2011,12 @@ class Z80:
     # RET cc
     def retnz(self):
         self.bus_access.address_on_bus(self.get_pair_IR(), 1)
-        if (self.sz5h3pnFlags & ZERO_MASK) == 0:
+        if (self._sz5h3pnFlags & ZERO_MASK) == 0:
             self.regPC = self.memptr = self.pop()
     
     def retz(self):
         self.bus_access.address_on_bus(self.get_pair_IR(), 1)
-        if (self.sz5h3pnFlags & ZERO_MASK) != 0:
+        if (self._sz5h3pnFlags & ZERO_MASK) != 0:
             self.regPC = self.memptr = self.pop()
     
     def retnc(self):
@@ -2030,22 +2031,22 @@ class Z80:
     
     def retpo(self):
         self.bus_access.address_on_bus(self.get_pair_IR(), 1)
-        if (self.sz5h3pnFlags & PARITY_MASK) == 0:
+        if (self._sz5h3pnFlags & PARITY_MASK) == 0:
             self.regPC = self.memptr = self.pop()
     
     def retpe(self):
         self.bus_access.address_on_bus(self.get_pair_IR(), 1)
-        if (self.sz5h3pnFlags & PARITY_MASK) != 0:
+        if (self._sz5h3pnFlags & PARITY_MASK) != 0:
             self.regPC = self.memptr = self.pop()
     
     def retp(self):
         self.bus_access.address_on_bus(self.get_pair_IR(), 1)
-        if self.sz5h3pnFlags < SIGN_MASK:
+        if self._sz5h3pnFlags < SIGN_MASK:
             self.regPC = self.memptr = self.pop()
     
     def retm(self):
         self.bus_access.address_on_bus(self.get_pair_IR(), 1)
-        if self.sz5h3pnFlags > 0x7f:
+        if self._sz5h3pnFlags > 0x7f:
             self.regPC = self.memptr = self.pop()
     
     # POP
@@ -2064,14 +2065,14 @@ class Z80:
     # JP cc,nn
     def jpnznn(self):
         self.memptr = self.bus_access.peekw(self.regPC)
-        if (self.sz5h3pnFlags & ZERO_MASK) == 0:
+        if (self._sz5h3pnFlags & ZERO_MASK) == 0:
             self.regPC = self.memptr
         else:
             self.regPC = (self.regPC + 2) & 0xffff
     
     def jpznn(self):
         self.memptr = self.bus_access.peekw(self.regPC)
-        if (self.sz5h3pnFlags & ZERO_MASK) != 0:
+        if (self._sz5h3pnFlags & ZERO_MASK) != 0:
             self.regPC = self.memptr
         else:
             self.regPC = (self.regPC + 2) & 0xffff
@@ -2092,28 +2093,28 @@ class Z80:
     
     def jpponn(self):
         self.memptr = self.bus_access.peekw(self.regPC)
-        if (self.sz5h3pnFlags & PARITY_MASK) == 0:
+        if (self._sz5h3pnFlags & PARITY_MASK) == 0:
             self.regPC = self.memptr
         else:
             self.regPC = (self.regPC + 2) & 0xffff
     
     def jppenn(self):
         self.memptr = self.bus_access.peekw(self.regPC)
-        if (self.sz5h3pnFlags & PARITY_MASK) != 0:
+        if (self._sz5h3pnFlags & PARITY_MASK) != 0:
             self.regPC = self.memptr
         else:
             self.regPC = (self.regPC + 2) & 0xffff
     
     def jppnn(self):
         self.memptr = self.bus_access.peekw(self.regPC)
-        if self.sz5h3pnFlags < SIGN_MASK:
+        if self._sz5h3pnFlags < SIGN_MASK:
             self.regPC = self.memptr
         else:
             self.regPC = (self.regPC + 2) & 0xffff
     
     def jpmnn(self):
         self.memptr = self.bus_access.peekw(self.regPC)
-        if self.sz5h3pnFlags > 0x7f:
+        if self._sz5h3pnFlags > 0x7f:
             self.regPC = self.memptr
         else:
             self.regPC = (self.regPC + 2) & 0xffff
@@ -2380,7 +2381,7 @@ class Z80:
     def bit0fromhl(self):
         work16 = self.get_reg_HL()
         self.bit(0x01, self.bus_access.peekb(work16))
-        self.sz5h3pnFlags = (self.sz5h3pnFlags & FLAG_SZHP_MASK) | ((self.memptr >> 8) & FLAG_53_MASK)
+        self._sz5h3pnFlags = (self._sz5h3pnFlags & FLAG_SZHP_MASK) | ((self.memptr >> 8) & FLAG_53_MASK)
         self.bus_access.address_on_bus(work16, 1)
 
     def bit0a(self):
@@ -2408,7 +2409,7 @@ class Z80:
     def bit1fromhl(self):
         work16 = self.get_reg_HL()
         self.bit(0x02, self.bus_access.peekb(work16))
-        self.sz5h3pnFlags = (self.sz5h3pnFlags & FLAG_SZHP_MASK) | ((self.memptr >> 8) & FLAG_53_MASK)
+        self._sz5h3pnFlags = (self._sz5h3pnFlags & FLAG_SZHP_MASK) | ((self.memptr >> 8) & FLAG_53_MASK)
         self.bus_access.address_on_bus(work16, 1)
 
     def bit1a(self):
@@ -2436,7 +2437,7 @@ class Z80:
     def bit2fromhl(self):
         work16 = self.get_reg_HL()
         self.bit(0x04, self.bus_access.peekb(work16))
-        self.sz5h3pnFlags = (self.sz5h3pnFlags & FLAG_SZHP_MASK) | ((self.memptr >> 8) & FLAG_53_MASK)
+        self._sz5h3pnFlags = (self._sz5h3pnFlags & FLAG_SZHP_MASK) | ((self.memptr >> 8) & FLAG_53_MASK)
         self.bus_access.address_on_bus(work16, 1)
 
     def bit2a(self):
@@ -2464,7 +2465,7 @@ class Z80:
     def bit3fromhl(self):
         work16 = self.get_reg_HL()
         self.bit(0x08, self.bus_access.peekb(work16))
-        self.sz5h3pnFlags = (self.sz5h3pnFlags & FLAG_SZHP_MASK) | ((self.memptr >> 8) & FLAG_53_MASK)
+        self._sz5h3pnFlags = (self._sz5h3pnFlags & FLAG_SZHP_MASK) | ((self.memptr >> 8) & FLAG_53_MASK)
         self.bus_access.address_on_bus(work16, 1)
 
     def bit3a(self):
@@ -2492,7 +2493,7 @@ class Z80:
     def bit4fromhl(self):
         work16 = self.get_reg_HL()
         self.bit(0x10, self.bus_access.peekb(work16))
-        self.sz5h3pnFlags = (self.sz5h3pnFlags & FLAG_SZHP_MASK) | ((self.memptr >> 8) & FLAG_53_MASK)
+        self._sz5h3pnFlags = (self._sz5h3pnFlags & FLAG_SZHP_MASK) | ((self.memptr >> 8) & FLAG_53_MASK)
         self.bus_access.address_on_bus(work16, 1)
 
     def bit4a(self):
@@ -2520,7 +2521,7 @@ class Z80:
     def bit5fromhl(self):
         work16 = self.get_reg_HL()
         self.bit(0x20, self.bus_access.peekb(work16))
-        self.sz5h3pnFlags = (self.sz5h3pnFlags & FLAG_SZHP_MASK) | ((self.memptr >> 8) & FLAG_53_MASK)
+        self._sz5h3pnFlags = (self._sz5h3pnFlags & FLAG_SZHP_MASK) | ((self.memptr >> 8) & FLAG_53_MASK)
         self.bus_access.address_on_bus(work16, 1)
     
     def bit5a(self):
@@ -2548,7 +2549,7 @@ class Z80:
     def bit6fromhl(self):
         work16 = self.get_reg_HL()
         self.bit(0x40, self.bus_access.peekb(work16))
-        self.sz5h3pnFlags = (self.sz5h3pnFlags & FLAG_SZHP_MASK) | ((self.memptr >> 8) & FLAG_53_MASK)
+        self._sz5h3pnFlags = (self._sz5h3pnFlags & FLAG_SZHP_MASK) | ((self.memptr >> 8) & FLAG_53_MASK)
         self.bus_access.address_on_bus(work16, 1)
     
     def bit6a(self):
@@ -2576,7 +2577,7 @@ class Z80:
     def bit7fromhl(self):
         work16 = self.get_reg_HL()
         self.bit(0x80, self.bus_access.peekb(work16))
-        self.sz5h3pnFlags = (self.sz5h3pnFlags & FLAG_SZHP_MASK) | ((self.memptr >> 8) & FLAG_53_MASK)
+        self._sz5h3pnFlags = (self._sz5h3pnFlags & FLAG_SZHP_MASK) | ((self.memptr >> 8) & FLAG_53_MASK)
         self.bus_access.address_on_bus(work16, 1)
     
     def bit7a(self):
@@ -3079,7 +3080,7 @@ class Z80:
     # CALL cc,nn
     def callnznn(self):
         self.memptr = self.bus_access.peekw(self.regPC)
-        if (self.sz5h3pnFlags & ZERO_MASK) == 0:
+        if (self._sz5h3pnFlags & ZERO_MASK) == 0:
             self.bus_access.address_on_bus((self.regPC + 1) & 0xffff, 1)
             self.push(self.regPC + 2)
             self.regPC = self.memptr
@@ -3088,7 +3089,7 @@ class Z80:
     
     def callznn(self):
         self.memptr = self.bus_access.peekw(self.regPC)
-        if (self.sz5h3pnFlags & ZERO_MASK) != 0:
+        if (self._sz5h3pnFlags & ZERO_MASK) != 0:
             self.bus_access.address_on_bus((self.regPC + 1) & 0xffff, 1)
             self.push(self.regPC + 2)
             self.regPC = self.memptr
@@ -3115,7 +3116,7 @@ class Z80:
     
     def callponn(self):
         self.memptr = self.bus_access.peekw(self.regPC)
-        if (self.sz5h3pnFlags & PARITY_MASK) == 0:
+        if (self._sz5h3pnFlags & PARITY_MASK) == 0:
             self.bus_access.address_on_bus((self.regPC + 1) & 0xffff, 1)
             self.push(self.regPC + 2)
             self.regPC = self.memptr
@@ -3124,7 +3125,7 @@ class Z80:
     
     def callpenn(self):
         self.memptr = self.bus_access.peekw(self.regPC)
-        if (self.sz5h3pnFlags & PARITY_MASK) != 0:
+        if (self._sz5h3pnFlags & PARITY_MASK) != 0:
             self.bus_access.address_on_bus((self.regPC + 1) & 0xffff, 1)
             self.push(self.regPC + 2)
             self.regPC = self.memptr
@@ -3133,7 +3134,7 @@ class Z80:
     
     def callpnn(self):
         self.memptr = self.bus_access.peekw(self.regPC)
-        if self.sz5h3pnFlags < SIGN_MASK:
+        if self._sz5h3pnFlags < SIGN_MASK:
             self.bus_access.address_on_bus((self.regPC + 1) & 0xffff, 1)
             self.push(self.regPC + 2)
             self.regPC = self.memptr
@@ -3142,7 +3143,7 @@ class Z80:
     
     def callmnn(self):
         self.memptr = self.bus_access.peekw(self.regPC)
-        if self.sz5h3pnFlags > 0x7f:
+        if self._sz5h3pnFlags > 0x7f:
             self.bus_access.address_on_bus((self.regPC + 1) & 0xffff, 1)
             self.push(self.regPC + 2)
             self.regPC = self.memptr
@@ -3252,7 +3253,7 @@ class Z80:
         self.regR += 1
         code = self._ixiydict.get(opcode)
         if code is None:
-            self.main_cmds[opcode]()
+            self._main_cmds[opcode]()
         else:
             self.regIX = code(self.regIX)
 
@@ -3262,57 +3263,57 @@ class Z80:
         self.memptr = self.get_reg_BC()
         self.regB = self.bus_access.in_port(self.memptr)
         self.memptr += 1
-        self.sz5h3pnFlags = self.sz53pn_addTable[self.regB]
-        self.flagQ = True
+        self._sz5h3pnFlags = self._sz53pn_addTable[self.regB]
+        self._flagQ = True
     
     def incfrombc(self):
         self.memptr = self.get_reg_BC()
         self.regC = self.bus_access.in_port(self.memptr)
         self.memptr += 1
-        self.sz5h3pnFlags = self.sz53pn_addTable[self.regC]
-        self.flagQ = True
+        self._sz5h3pnFlags = self._sz53pn_addTable[self.regC]
+        self._flagQ = True
 
     def indfrombc(self):
         self.memptr = self.get_reg_BC()
         self.regD = self.bus_access.in_port(self.memptr)
         self.memptr += 1
-        self.sz5h3pnFlags = self.sz53pn_addTable[self.regD]
-        self.flagQ = True
+        self._sz5h3pnFlags = self._sz53pn_addTable[self.regD]
+        self._flagQ = True
     
     def inefrombc(self):
         self.memptr = self.get_reg_BC()
         self.regE = self.bus_access.in_port(self.memptr)
         self.memptr += 1
-        self.sz5h3pnFlags = self.sz53pn_addTable[self.regE]
-        self.flagQ = True
+        self._sz5h3pnFlags = self._sz53pn_addTable[self.regE]
+        self._flagQ = True
     
     def inhfrombc(self):
         self.memptr = self.get_reg_BC()
         self.regH = self.bus_access.in_port(self.memptr)
         self.memptr += 1
-        self.sz5h3pnFlags = self.sz53pn_addTable[self.regH]
-        self.flagQ = True
+        self._sz5h3pnFlags = self._sz53pn_addTable[self.regH]
+        self._flagQ = True
 
     def inlfrombc(self):
         self.memptr = self.get_reg_BC()
         self.regL = self.bus_access.in_port(self.memptr)
         self.memptr += 1
-        self.sz5h3pnFlags = self.sz53pn_addTable[self.regL]
-        self.flagQ = True
+        self._sz5h3pnFlags = self._sz53pn_addTable[self.regL]
+        self._flagQ = True
     
     def infrombc(self):
         self.memptr = self.get_reg_BC()
         in_port = self.bus_access.in_port(self.memptr)
         self.memptr += 1
-        self.sz5h3pnFlags = self.sz53pn_addTable[in_port]
-        self.flagQ = True
+        self._sz5h3pnFlags = self._sz53pn_addTable[in_port]
+        self._flagQ = True
 
     def inafrombc(self):
         self.memptr = self.get_reg_BC()
         self.regA = self.bus_access.in_port(self.memptr)
         self.memptr += 1
-        self.sz5h3pnFlags = self.sz53pn_addTable[self.regA]
-        self.flagQ = True
+        self._sz5h3pnFlags = self._sz53pn_addTable[self.regA]
+        self._flagQ = True
 
     # OUT (c),r
     def outtocb(self):
@@ -3474,19 +3475,19 @@ class Z80:
     def ldai(self):
         self.bus_access.address_on_bus(self.get_pair_IR(), 1)
         self.regA = self.regI
-        self.sz5h3pnFlags = self.sz53n_addTable[self.regA]
+        self._sz5h3pnFlags = self._sz53n_addTable[self.regA]
         if self.ffIFF2 and not self.bus_access.is_active_INT():
-            self.sz5h3pnFlags |= PARITY_MASK
-        self.flagQ = True
+            self._sz5h3pnFlags |= PARITY_MASK
+        self._flagQ = True
     
     # Load a with r - (NOT CHECKED)
     def ldar(self):
         self.bus_access.address_on_bus(self.get_pair_IR(), 1)
         self.regA = self.get_reg_R()
-        self.sz5h3pnFlags = self.sz53n_addTable[self.regA]
+        self._sz5h3pnFlags = self._sz53n_addTable[self.regA]
         if self.ffIFF2 and not self.bus_access.is_active_INT():
-            self.sz5h3pnFlags |= PARITY_MASK
-        self.flagQ = True
+            self._sz5h3pnFlags |= PARITY_MASK
+        self._flagQ = True
     
     def rrda(self):
         self.rrd()
@@ -3497,77 +3498,77 @@ class Z80:
     # xxIR
     def ldir(self):
         self.ldi()
-        if (self.sz5h3pnFlags & PARITY_MASK) == PARITY_MASK:
+        if (self._sz5h3pnFlags & PARITY_MASK) == PARITY_MASK:
             self.regPC = (self.regPC - 2) & 0xffff
             self.memptr = self.regPC + 1
             self.bus_access.address_on_bus((self.get_reg_DE() - 1) & 0xffff, 5)
-            self.sz5h3pnFlags &= ~FLAG_53_MASK
-            self.sz5h3pnFlags |= ((self.regPC >> 8) & FLAG_53_MASK)
+            self._sz5h3pnFlags &= ~FLAG_53_MASK
+            self._sz5h3pnFlags |= ((self.regPC >> 8) & FLAG_53_MASK)
 
     def cpir(self):
         self.cpi()
-        if (self.sz5h3pnFlags & PARITY_MASK) == PARITY_MASK and (self.sz5h3pnFlags & ZERO_MASK) == 0:
+        if (self._sz5h3pnFlags & PARITY_MASK) == PARITY_MASK and (self._sz5h3pnFlags & ZERO_MASK) == 0:
             self.regPC = (self.regPC - 2) & 0xffff
             self.memptr = self.regPC + 1
             self.bus_access.address_on_bus((self.get_reg_HL() - 1) & 0xffff, 5)
-            self.sz5h3pnFlags &= ~FLAG_53_MASK
-            self.sz5h3pnFlags |= ((self.regPC >> 8) & FLAG_53_MASK)
+            self._sz5h3pnFlags &= ~FLAG_53_MASK
+            self._sz5h3pnFlags |= ((self.regPC >> 8) & FLAG_53_MASK)
     
     def inir(self):
         self.ini()
         if self.regB != 0:
             self.regPC = (self.regPC - 2) & 0xffff
             self.bus_access.address_on_bus((self.get_reg_HL() - 1) & 0xffff, 5)
-            self.adjustINxROUTxRFlags()
+            self._adjust_inxRoutxRFlags()
     
     def otir(self):
         self.outi()
         if self.regB != 0:
             self.regPC = (self.regPC - 2) & 0xffff
             self.bus_access.address_on_bus(self.get_reg_BC(), 5)
-            self.adjustINxROUTxRFlags()
+            self._adjust_inxRoutxRFlags()
     
     # xxDR
     def lddr(self):
         self.ldd()
-        if (self.sz5h3pnFlags & PARITY_MASK) == PARITY_MASK:
+        if (self._sz5h3pnFlags & PARITY_MASK) == PARITY_MASK:
             self.regPC = (self.regPC - 2) & 0xffff
             self.memptr = self.regPC + 1
             self.bus_access.address_on_bus((self.get_reg_DE() + 1) & 0xffff, 5)
-            self.sz5h3pnFlags &= ~FLAG_53_MASK
-            self.sz5h3pnFlags |= ((self.regPC >> 8) & FLAG_53_MASK)
+            self._sz5h3pnFlags &= ~FLAG_53_MASK
+            self._sz5h3pnFlags |= ((self.regPC >> 8) & FLAG_53_MASK)
     
     def cpdr(self):
         self.cpd()
-        if (self.sz5h3pnFlags & PARITY_MASK) == PARITY_MASK and (self.sz5h3pnFlags & ZERO_MASK) == 0:
+        if (self._sz5h3pnFlags & PARITY_MASK) == PARITY_MASK and (self._sz5h3pnFlags & ZERO_MASK) == 0:
             self.regPC = (self.regPC - 2) & 0xffff
             self.memptr = self.regPC + 1
             self.bus_access.address_on_bus((self.get_reg_HL() + 1) & 0xffff, 5)
-            self.sz5h3pnFlags &= ~FLAG_53_MASK
-            self.sz5h3pnFlags |= ((self.regPC >> 8) & FLAG_53_MASK)
+            self._sz5h3pnFlags &= ~FLAG_53_MASK
+            self._sz5h3pnFlags |= ((self.regPC >> 8) & FLAG_53_MASK)
     
     def indr(self):
         self.ind()
         if self.regB != 0:
             self.regPC = (self.regPC - 2) & 0xffff
             self.bus_access.address_on_bus((self.get_reg_HL() + 1) & 0xffff, 5)
-            self.adjustINxROUTxRFlags()
+            self._adjust_inxRoutxRFlags()
     
     def otdr(self):
         self.outd()
         if self.regB != 0:
             self.regPC = (self.regPC - 2) & 0xffff
             self.bus_access.address_on_bus(self.get_reg_BC(), 5)
-            self.adjustINxROUTxRFlags()
+            self._adjust_inxRoutxRFlags()
 
     def opcodedd(self):
-        self.prefixOpcode = 0xDD
+        self._prefixOpcode = 0xDD
 
     def opcodeed(self):
-        self.prefixOpcode = 0xED
+        self._prefixOpcode = 0xED
 
     def opcodefd(self):
-        self.prefixOpcode = 0xFD
+        self._prefixOpcode = 0xFD
 
     @staticmethod
     def ednop():
@@ -3587,7 +3588,7 @@ class Z80:
         self.regR += 1
         code = self._ixiydict.get(opcode)
         if code is None:
-            self.main_cmds[opcode]()
+            self._main_cmds[opcode]()
         else:
             self.regIY = code(self.regIY)
 
@@ -4031,15 +4032,15 @@ class Z80:
         return regIXY
 
     def opcodedd_ixy(self, regIXY: int) -> int:
-        self.prefixOpcode = 0xDD
+        self._prefixOpcode = 0xDD
         return regIXY
 
     def opcodeed_ixy(self, regIXY: int) -> int:
-        self.prefixOpcode = 0xED
+        self._prefixOpcode = 0xED
         return regIXY
 
     def opcodefd_ixy(self, regIXY: int) -> int:
-        self.prefixOpcode = 0xFD
+        self._prefixOpcode = 0xFD
         return regIXY
 
     def idcb(self, regIXY: int) -> int:
@@ -4441,42 +4442,42 @@ class Z80:
     # self.bit *
     def cbbit0(self, address):
         self.bit(0x01, self.bus_access.peekb(address))
-        self.sz5h3pnFlags = (self.sz5h3pnFlags & FLAG_SZHP_MASK) | ((address >> 8) & FLAG_53_MASK)
+        self._sz5h3pnFlags = (self._sz5h3pnFlags & FLAG_SZHP_MASK) | ((address >> 8) & FLAG_53_MASK)
         self.bus_access.address_on_bus(address, 1)
     
     def cbbit1(self, address):
         self.bit(0x02, self.bus_access.peekb(address))
-        self.sz5h3pnFlags = (self.sz5h3pnFlags & FLAG_SZHP_MASK) | ((address >> 8) & FLAG_53_MASK)
+        self._sz5h3pnFlags = (self._sz5h3pnFlags & FLAG_SZHP_MASK) | ((address >> 8) & FLAG_53_MASK)
         self.bus_access.address_on_bus(address, 1)
     
     def cbbit2(self, address):
         self.bit(0x04, self.bus_access.peekb(address))
-        self.sz5h3pnFlags = (self.sz5h3pnFlags & FLAG_SZHP_MASK) | ((address >> 8) & FLAG_53_MASK)
+        self._sz5h3pnFlags = (self._sz5h3pnFlags & FLAG_SZHP_MASK) | ((address >> 8) & FLAG_53_MASK)
         self.bus_access.address_on_bus(address, 1)
     
     def cbbit3(self, address):
         self.bit(0x08, self.bus_access.peekb(address))
-        self.sz5h3pnFlags = (self.sz5h3pnFlags & FLAG_SZHP_MASK) | ((address >> 8) & FLAG_53_MASK)
+        self._sz5h3pnFlags = (self._sz5h3pnFlags & FLAG_SZHP_MASK) | ((address >> 8) & FLAG_53_MASK)
         self.bus_access.address_on_bus(address, 1)
     
     def cbbit4(self, address):
         self.bit(0x10, self.bus_access.peekb(address))
-        self.sz5h3pnFlags = (self.sz5h3pnFlags & FLAG_SZHP_MASK) | ((address >> 8) & FLAG_53_MASK)
+        self._sz5h3pnFlags = (self._sz5h3pnFlags & FLAG_SZHP_MASK) | ((address >> 8) & FLAG_53_MASK)
         self.bus_access.address_on_bus(address, 1)
     
     def cbbit5(self, address):
         self.bit(0x20, self.bus_access.peekb(address))
-        self.sz5h3pnFlags = (self.sz5h3pnFlags & FLAG_SZHP_MASK) | ((address >> 8) & FLAG_53_MASK)
+        self._sz5h3pnFlags = (self._sz5h3pnFlags & FLAG_SZHP_MASK) | ((address >> 8) & FLAG_53_MASK)
         self.bus_access.address_on_bus(address, 1)
     
     def cbbit6(self, address):
         self.bit(0x40, self.bus_access.peekb(address))
-        self.sz5h3pnFlags = (self.sz5h3pnFlags & FLAG_SZHP_MASK) | ((address >> 8) & FLAG_53_MASK)
+        self._sz5h3pnFlags = (self._sz5h3pnFlags & FLAG_SZHP_MASK) | ((address >> 8) & FLAG_53_MASK)
         self.bus_access.address_on_bus(address, 1)
     
     def cbbit7(self, address):
         self.bit(0x80, self.bus_access.peekb(address))
-        self.sz5h3pnFlags = (self.sz5h3pnFlags & FLAG_SZHP_MASK) | ((address >> 8) & FLAG_53_MASK)
+        self._sz5h3pnFlags = (self._sz5h3pnFlags & FLAG_SZHP_MASK) | ((address >> 8) & FLAG_53_MASK)
         self.bus_access.address_on_bus(address, 1)
     
     # self.res 0, *
