@@ -22,25 +22,18 @@ from clock import Clock
 from keyboard import Keyboard
 from ports import Ports
 from memory import Memory
-from video import Video, SCREEN_HEIGHT
+from video import Video, SCREEN_HEIGHT, TSTATES_PER_INTERRUPT, TSTATES_LEFT_BORDER, TSTATES_FIRST_LINE, FIRST_PIXEL_LINE, TSTATES_PER_LINE, TSTATES_PIXELS, TSTATES_RIGHT_BORDER, TSTATES_RETRACE, \
+    NUMBER_OF_LINES
 from z80 import Z80
 
 from load import Load
+
 
 ROMFILE = '48.rom'
 SNADIR = 'games/'
 
 # As per https://worldofspectrum.org/faq/reference/48kreference.htm
-TSTATES_PER_INTERRUPT = 69888
-TSTATES_PER_LINE = 224
-TSTATES_LEFT_BORDER = 24
-TSTATES_RIGHT_BORDER = 24
-TSTATES_PIXELS = 128
-TSTATES_RETRACE = 48
-TSTATES_FIRST_LINE = TSTATES_PER_LINE - TSTATES_LEFT_BORDER
-TSTATES_LAST_LINE = TSTATES_RIGHT_BORDER
-NUMBER_OF_LINES = 312
-FIRST_PIXEL_LINE = 64
+
 INTERRUPT_LENGTH = 24
 
 
@@ -98,15 +91,16 @@ class ZXSpectrum48BusAccess(BusAccess):
         return 0 < current < INTERRUPT_LENGTH
 
 
-class Spectrum:
+class Spectrum():
     def __init__(self):
+        self.clock = Clock()
+
         self.keyboard = Keyboard()
         self.ports = Ports(self.keyboard)
-
         self.memory = Memory()
-        self.video = Video(self.memory, self.ports, ratio=2)
 
-        self.clock = Clock()
+        self.video = Video(self.clock, self.memory, self.ports, ratio=2)
+
         self.bus_access = ZXSpectrum48BusAccess(self.clock, self.memory, self.ports)
         self.z80 = Z80(
             self.clock,

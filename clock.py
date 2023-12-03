@@ -1,4 +1,5 @@
 
+
 class Clock:
     def __init__(self) -> None:
         self.tstates = 0

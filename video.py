@@ -1,14 +1,24 @@
+import time
 from typing import Optional
 
 import pygame
 
 from pygame import Surface
 
+from clock import Clock
 from ports import Ports
 from memory import Memory
 
-
-__show_fps__ = True
+TSTATES_PER_INTERRUPT = 69888
+TSTATES_PER_LINE = 224
+TSTATES_LEFT_BORDER = 24
+TSTATES_RIGHT_BORDER = 24
+TSTATES_PIXELS = 128
+TSTATES_RETRACE = 48
+TSTATES_FIRST_LINE = TSTATES_PER_LINE - TSTATES_LEFT_BORDER
+TSTATES_LAST_LINE = TSTATES_RIGHT_BORDER
+NUMBER_OF_LINES = 312
+FIRST_PIXEL_LINE = 64
 
 SCREEN_WIDTH = 256
 SCREEN_HEIGHT = 192
@@ -44,7 +54,8 @@ SPECTRUM_FULL_SCREEN_SIZE = (FULL_SCREEN_WIDTH, FULL_SCREEN_HEIGHT)
 
 
 class Video:
-    def __init__(self, memory: Memory, ports: Ports, ratio: int = 2):
+    def __init__(self, clock: Clock, memory: Memory, ports: Ports, show_fps: bool = True, ratio: int = 2):
+        self.clock = clock
         self.memory = memory
         self.ports = ports
         self.ratio = ratio
@@ -63,7 +74,7 @@ class Video:
         self.screen: Optional[Surface] = None
         self.pre_screen: Optional[Surface] = None
 
-        self.clock = pygame.time.Clock()
+        self.video_clock = pygame.time.Clock()
         self.old_border = -1
 
         self.scaled_spectrum_size = (FULL_SCREEN_WIDTH * self.ratio, FULL_SCREEN_HEIGHT * self.ratio)
@@ -74,6 +85,13 @@ class Video:
         self.zx_videoram = self.memory.mem[16384:16384 + 6912]
 
         self.init_pixelmap()
+
+        self.show_fps = True
+        self.fast = False
+        self._fast_counter = 0
+        self._last_frame = 0
+        self._last_tstates = 0
+        self._last_time = time.time()
 
     def init_pixelmap(self):
         for i in range(256):
@@ -107,10 +125,6 @@ class Video:
         pygame.display.flip()
 
     def update(self):
-        if __show_fps__:
-            self.clock.tick(50)
-            pygame.display.set_caption(f'{CAPTION} - {self.clock.get_fps():.2f} FPS')
-
         # TODO - collect timings of changes of border and recreate it afterwards here
         if self.ports.current_border != self.old_border:
             self.zx_screen_with_border.fill(self.ports.current_border)
@@ -121,7 +135,34 @@ class Video:
         pygame.transform.scale(self.zx_screen_with_border, self.scaled_spectrum_size, self.pre_screen)
         self.screen.blit(self.pre_screen, (0, 0))
 
-        pygame.display.flip()
+        video_frame = False
+        if self.fast:
+            if self._fast_counter <= 0:
+                self.video_clock.tick(50)
+                pygame.display.flip()
+                self._fast_counter = 200
+                video_frame = True
+            self._fast_counter -= 1
+        else:
+            video_frame = True
+
+        if video_frame:
+            if self.show_fps:
+                now = time.time()
+                total_tstates = (self.clock.frames - self._last_frame) * TSTATES_PER_INTERRUPT + (self.clock.tstates - self._last_tstates)
+                speed = (total_tstates / (TSTATES_PER_INTERRUPT * (now - self._last_time) * 50)) * 100
+
+                self._last_frame = self.clock.frames
+                self._last_tstates = self.clock.tstates
+                self._last_time = now
+                if self.fast:
+                    pygame.display.set_caption(f'{CAPTION} - {self.video_clock.get_fps():.2f} FPS, Speed: {speed:0.1f}%')
+                else:
+                    # pygame.display.set_caption(f'{CAPTION} - Speed: {speed:0.1f}%')
+                    pygame.display.set_caption(f'{CAPTION} - {self.video_clock.get_fps():.2f} FPS')
+
+            self.video_clock.tick(50)
+            pygame.display.flip()
 
     def fill_screen_map_line(self, coord_y: int) -> None:
         # zx_videoram = self.memory.mem[16384:16384 + 6912]
