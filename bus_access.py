@@ -33,7 +33,7 @@ class BusAccess:
         lsb = self.peekb(address)
         msb = self.peekb((address + 1) & 0xFFFF)
 
-        return (msb << 8) + lsb
+        return (msb << 8) | lsb
 
     def pokew(self, address: int, value: int) -> None:
         self.memory.pokeb(address, value & 0xff)
