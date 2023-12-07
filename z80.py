@@ -370,7 +370,7 @@ class Z80:
 
     def show_registers(self):
         print(
-              # f"t: {self.bus_access.tstates:06} "
+              f"t: {self.bus_access.tstates:06} "
               f"PC: 0x{self.regPC:04x} "
               f"SP: 0x{self.regSP:04x} "
               f"OPCODE: {self.memory.peekb(self.regPC):02x}({self.memory.peekb(self.regPC):03d}) "
@@ -1323,6 +1323,7 @@ class Z80:
         self.regPC = (self.regPC + 2) & 0xffff
     
     def _addhlde(self):
+        self.bus_access.address_on_bus(self.get_pair_IR(), 7)
         self.set_reg_HL(self._add16(self.get_reg_HL(), self.get_reg_DE()))
 
     def _ldhlnn(self):
