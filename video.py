@@ -5,7 +5,7 @@ import pygame
 
 from pygame import Surface
 
-from clock import Clock
+from bus_access import ClockAndBusAccess
 from ports import Ports
 from memory import Memory
 
@@ -54,11 +54,12 @@ SPECTRUM_FULL_SCREEN_SIZE = (FULL_SCREEN_WIDTH, FULL_SCREEN_HEIGHT)
 
 
 class Video:
-    def __init__(self, clock: Clock, memory: Memory, ports: Ports, show_fps: bool = True, ratio: int = 2):
-        self.clock = clock
+    def __init__(self, bus_access: ClockAndBusAccess, memory: Memory, ports: Ports, show_fps: bool = True, ratio: int = 2):
+        self.bus_access = bus_access
         self.memory = memory
         self.ports = ports
         self.ratio = ratio
+        self.show_fps = show_fps
 
         # Initialisation of address tables for pixels and attribute lines
         self.addr_pix = [(((line // 64) * 2048) + ((line % 8) * 256) + ((line & 56) * 4)) for line in range(192)]
@@ -68,6 +69,11 @@ class Video:
 
         self.pixelmap = bytearray(256 * 256 * 8)
         self.pixelmap_m = memoryview(self.pixelmap)
+
+        self.offs = 0
+        self.pix_addr = 0
+        self.attr_addr = 0
+        self.pixel_x = 0
 
         self.zx_screen: Optional[Surface] = None
         self.zx_screen_with_border: Optional[Surface] = None
@@ -79,8 +85,8 @@ class Video:
 
         self.scaled_spectrum_size = (FULL_SCREEN_WIDTH * self.ratio, FULL_SCREEN_HEIGHT * self.ratio)
 
-        self.buffer = bytearray(SCREEN_WIDTH * SCREEN_HEIGHT)
-        self.buffer_m = memoryview(self.buffer)
+        self.buffer_m = memoryview(bytearray(SCREEN_WIDTH * SCREEN_HEIGHT))
+        self.back_buffer_m = memoryview(bytearray(SCREEN_WIDTH * SCREEN_HEIGHT))
 
         self.zx_videoram = self.memory.mem[16384:16384 + 6912]
 
@@ -149,11 +155,11 @@ class Video:
         if video_frame:
             if self.show_fps:
                 now = time.time()
-                total_tstates = (self.clock.frames - self._last_frame) * TSTATES_PER_INTERRUPT + (self.clock.tstates - self._last_tstates)
+                total_tstates = (self.bus_access.frames - self._last_frame) * TSTATES_PER_INTERRUPT + (self.bus_access.tstates - self._last_tstates)
                 speed = (total_tstates / (TSTATES_PER_INTERRUPT * (now - self._last_time) * 50)) * 100
 
-                self._last_frame = self.clock.frames
-                self._last_tstates = self.clock.tstates
+                self._last_frame = self.bus_access.frames
+                self._last_tstates = self.bus_access.tstates
                 self._last_time = now
                 if self.fast:
                     pygame.display.set_caption(f'{CAPTION} - {self.video_clock.get_fps():.2f} FPS, Speed: {speed:0.1f}%')
@@ -175,6 +181,26 @@ class Video:
             poffs = self.zx_videoram[attr_addr + i] * STRIDE + self.zx_videoram[pix_addr + i] * 8
             self.buffer_m[offs:offs + 8] = self.pixelmap_m[poffs:poffs + 8]
             offs += 8
+
+    def start_screen_line(self, line: int) -> None:
+        self.offs = 32 * 8 * line
+        self.pix_addr = self.addr_pix[line]
+        self.attr_addr = self.addr_attr[line]
+        self.pixel_x = 0
+
+    def update_next_screen_byte(self) -> None:
+        poffs = self.zx_videoram[self.attr_addr + self.pixel_x] * STRIDE + self.zx_videoram[self.pix_addr + self.pixel_x] * 8
+        self.buffer_m[self.offs:self.offs + 8] = self.pixelmap_m[poffs:poffs + 8]
+        self.offs += 8
+        self.pixel_x += 1
+
+    def update_pixel_byte(self, x: int, line: int) -> None:
+        offs = 32 * 8 * line + x * 8
+        pix_addr = self.addr_pix[line] + x
+        attr_addr = self.addr_attr[line] + x
+
+        poffs = self.zx_videoram[attr_addr] * STRIDE + self.zx_videoram[pix_addr] * 8
+        self.buffer_m[offs:offs + 8] = self.pixelmap_m[poffs:poffs + 8]
 
     def fill_screen_map(self) -> None:
         # zx_videoram = self.memory.mem[16384:16384 + 6912]

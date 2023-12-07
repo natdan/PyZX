@@ -1,7 +1,6 @@
 from typing import Callable
 
-from bus_access import BusAccess
-from clock import Clock
+from bus_access import ClockAndBusAccess
 from memory import Memory
 
 
@@ -28,18 +27,14 @@ FLAG_SZHP_MASK = FLAG_SZP_MASK | HALFCARRY_MASK
 
 class Z80:
     def __init__(self,
-                 clock: Clock,
-                 bus_access: BusAccess,
-                 memory: Memory,
-                 tstates_test: Callable[[], bool]) -> None:
-        self.clock = clock
+                 bus_access: ClockAndBusAccess,
+                 memory: Memory) -> None:
         self.bus_access = bus_access
         self.memory = memory
-        self.tstates_test = tstates_test
 
         self.show_debug_info = False
 
-        self.clock.tstates = 0
+        self.bus_access.tstates = 0
 
         self._prefixOpcode = 0x00
         self.execDone = False
@@ -219,7 +214,8 @@ class Z80:
             0x70: self._ldtoiddb, 0x71: self._ldtoiddc, 0x72: self._ldtoiddd, 0x73: self._ldtoidde, 0x74: self._ldtoiddh, 0x75: self._ldtoiddl, 0x36: self._ldtoiddn, 0x77: self._ldtoidda,
             0x84: self._addaidh, 0x85: self._addaidl, 0x86: self._addafromidd, 0x8c: self._adcaidh, 0x8d: self._adcaidl, 0x8e: self._adcafromidd,
             0x94: self._subaidh, 0x95: self._subaidl, 0x96: self._subafromidd, 0x9c: self._sbcaidh, 0x9d: self._sbcaidl, 0x9e: self._sbcafromidd,
-            0xa4: self._andaidh, 0xa5: self._andaidl, 0xa6: self._andafromidd, 0xac: self._xoraidh, 0xad: self._xoraidl, 0xae: self._xorafromidd, 0xb4: self._oraidh, 0xb5: self._oraidl, 0xb6: self._orafromidd,
+            0xa4: self._andaidh, 0xa5: self._andaidl, 0xa6: self._andafromidd, 0xac: self._xoraidh, 0xad: self._xoraidl, 0xae: self._xorafromidd,
+            0xb4: self._oraidh, 0xb5: self._oraidl, 0xb6: self._orafromidd,
             0xbc: self._cpaidh, 0xbd: self._cpaidl, 0xbe: self._cpafromidd,
             0xe5: self._pushid, 0xe1: self._popid, 0xe9: self._jpid, 0xf9: self._ldspid, 0xe3: self._exfromspid,
             0xcb: self._idcb, 0xdd: self._opcodedd_ixy, 0xed: self._opcodeed_ixy, 0xfd: self._opcodefd_ixy
@@ -308,71 +304,73 @@ class Z80:
             self._sz5h3pnFlags &= ~PARITY_MASK
 
     def execute(self, states_limit: int) -> None:
+        while self.bus_access.tstates < states_limit:
+            self.execute_one_cycle()
 
-        while self.clock.tstates < states_limit:
-            if self.show_debug_info:
-                self.show_registers()
+    def execute_one_cycle(self) -> None:
+        if self.show_debug_info:
+            self.show_registers()
 
-            opcode = self.bus_access.fetch_opcode(self.regPC)
-            self.regR += 1
+        opcode = self.bus_access.fetch_opcode(self.regPC)
+        self.regR += 1
 
-            # if self.prefixOpcode == 0 && breakpointAt.get(regPC):
-            #     opCode = NotifyImpl.breakpoint(regPC, opCode);
+        # if self.prefixOpcode == 0 && breakpointAt.get(regPC):
+        #     opCode = NotifyImpl.breakpoint(regPC, opCode);
 
-            if not self.halted:
-                self.regPC = (self.regPC + 1) & 0xffff
+        if not self.halted:
+            self.regPC = (self.regPC + 1) & 0xffff
 
-                if self._prefixOpcode == 0x00:
-                    self._flagQ = self.pendingEI = False
+            if self._prefixOpcode == 0x00:
+                self._flagQ = self.pendingEI = False
+                self._main_cmds[opcode]()
+            elif self._prefixOpcode == 0xDD:
+                self._prefixOpcode = 0
+
+                code = self._ixiydict.get(opcode)
+                if code is None:
                     self._main_cmds[opcode]()
-                elif self._prefixOpcode == 0xDD:
-                    self._prefixOpcode = 0
-
-                    code = self._ixiydict.get(opcode)
-                    if code is None:
-                        self._main_cmds[opcode]()
-                    else:
-                        self.regIX = code(self.regIX)
-
-                elif self._prefixOpcode == 0xED:
-                    self._prefixOpcode = 0
-                    code = self._eddict.get(opcode)
-                    if code is not None:
-                        code()
-                elif self._prefixOpcode == 0xFD:
-                    self._prefixOpcode = 0
-
-                    code = self._ixiydict.get(opcode)
-                    if code is None:
-                        self._main_cmds[opcode]()
-                    else:
-                        self.regIY = code(self.regIY)
                 else:
-                    pass
-                    # log.error(String.format("ERROR!: prefixOpcode = %02x, opCode = %02x", prefixOpcode, opCode));
+                    self.regIX = code(self.regIX)
 
-                if self._prefixOpcode != 0x00:
-                    continue
+            elif self._prefixOpcode == 0xED:
+                self._prefixOpcode = 0
+                code = self._eddict.get(opcode)
+                if code is not None:
+                    code()
+            elif self._prefixOpcode == 0xFD:
+                self._prefixOpcode = 0
 
-                self._lastFlagQ = self._flagQ
+                code = self._ixiydict.get(opcode)
+                if code is None:
+                    self._main_cmds[opcode]()
+                else:
+                    self.regIY = code(self.regIY)
+            else:
+                pass
+                # log.error(String.format("ERROR!: prefixOpcode = %02x, opCode = %02x", prefixOpcode, opCode));
 
-                # if execDone:
-                #     NotifyImpl.execDone();
+            if self._prefixOpcode != 0x00:
+                return
 
-            if self.activeNMI:
-                self.activeNMI = False
-                self.nmi()
-                continue
+            self._lastFlagQ = self._flagQ
 
-            if self.ffIFF1 and not self.pendingEI and self.bus_access.is_active_INT():
-                self.interruption()
+            # if execDone:
+            #     NotifyImpl.execDone();
 
-            # if not self.ffIFF1 and not self.pendingEI and self.bus_access.is_active_INT():
-            #     self.show_debug_info = True
+        if self.activeNMI:
+            self.activeNMI = False
+            self.nmi()
+            return
+
+        if self.ffIFF1 and not self.pendingEI and self.bus_access.is_active_INT():
+            self.interruption()
+
+        # if not self.ffIFF1 and not self.pendingEI and self.bus_access.is_active_INT():
+        #     self.show_debug_info = True
 
     def show_registers(self):
         print(
-              # f"t: {self.clock.tstates:06} "
+              # f"t: {self.bus_access.tstates:06} "
               f"PC: 0x{self.regPC:04x} "
               f"SP: 0x{self.regSP:04x} "
               f"OPCODE: {self.memory.peekb(self.regPC):02x}({self.memory.peekb(self.regPC):03d}) "

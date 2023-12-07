@@ -21,7 +21,8 @@ class Memory:
             if self.mem_rw[addr//0x4000]:
                 self.mem[addr] = word >> 8
         else:
-            if self.mem_rw[addr//0x4000]:
+            # if self.mem_rw[addr//0x4000]:  # It seems that simple comparison is faster
+            if addr >= 16384:
                 self.wstruct.pack_into(self.mem, addr, word)
 
     def peekw(self, addr: int) -> int:
@@ -32,7 +33,8 @@ class Memory:
 
     def pokeb(self, addr: int, byte):
         try:
-            if self.mem_rw[addr//0x4000]:
+            # if self.mem_rw[addr//0x4000]:  # It seems that simple comparison is faster
+            if addr >= 16384:
                 self.mem[addr] = byte
         except Exception as error:
             print(addr, byte, type(addr), type(byte))

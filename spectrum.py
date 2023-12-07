@@ -1,29 +1,19 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 
 """
 ZX Spectrum Emulator
 Vadim Kataev
 www.technopedia.org
-
-ver.0.1 2005
-ver.0.2 June 2008
-Python 3 conversion + modifications by CityAceE 2018
-Full z80 core rewrite + optimizations + improvements Q-Master 2019
-Simple fixes Bedazzle 2020
 """
 
 import sys
 
-from bus_access import BusAccess
-from clock import Clock
-# import load
+from bus_access import ClockAndBusAccess
 
 from keyboard import Keyboard
 from ports import Ports
 from memory import Memory
-from video import Video, SCREEN_HEIGHT, TSTATES_PER_INTERRUPT, TSTATES_LEFT_BORDER, TSTATES_FIRST_LINE, FIRST_PIXEL_LINE, TSTATES_PER_LINE, TSTATES_PIXELS, TSTATES_RIGHT_BORDER, TSTATES_RETRACE, \
-    NUMBER_OF_LINES
+from video import Video, SCREEN_HEIGHT, TSTATES_PER_INTERRUPT, TSTATES_LEFT_BORDER, FIRST_PIXEL_LINE, TSTATES_PER_LINE, TSTATES_PIXELS, TSTATES_RIGHT_BORDER, TSTATES_RETRACE
 from z80 import Z80
 
 from load import Load
@@ -37,88 +27,203 @@ SNADIR = 'games/'
 INTERRUPT_LENGTH = 24
 
 
-class ZXSpectrum48BusAccess(BusAccess):
+class ZXSpectrum48ClockAndBusAccess(ClockAndBusAccess):
     def __init__(self,
-                 clock: Clock,
                  memory: Memory,
                  ports: Ports) -> None:
-        super().__init__(clock, memory, ports)
+        super().__init__(memory, ports)
+
+        self.delay_tstates = [0] * (TSTATES_PER_INTERRUPT + 200)
+
+        for i in range(14335, 57247, TSTATES_PER_LINE):
+            for n in range(0, 128, 8):
+                frame = i + n
+                self.delay_tstates[frame] = 6
+                frame -= 1
+                self.delay_tstates[frame] = 5
+                frame -= 1
+                self.delay_tstates[frame] = 4
+                frame -= 1
+                self.delay_tstates[frame] = 3
+                frame -= 1
+                self.delay_tstates[frame] = 2
+                frame -= 1
+                self.delay_tstates[frame] = 1
+                frame -= 1
+                self.delay_tstates[frame] = 0
+                frame -= 1
+                self.delay_tstates[frame] = 0
 
     def fetch_opcode(self, address: int) -> int:
+        if 16383 <= address < 32768:
+            self.tstates += self.delay_tstates[self.tstates] + 4
+        else:
+            self.tstates += 4
+
         t = self.memory.peekb(address)
-        self.clock.tstates += 4
         return t
 
     def peekb(self, address: int) -> int:
-        self.clock.tstates += 3
+        if 16384 <= address < 32768:
+            self.tstates += self.delay_tstates[self.tstates] + 3
+        else:
+            self.tstates += 3
         return self.memory.peekb(address)
 
     def peeksb(self, address: int) -> int:
-        self.clock.tstates += 3
+        if 16384 <= address < 32768:
+            self.tstates += self.delay_tstates[self.tstates] + 3
+        else:
+            self.tstates += 3
         return self.memory.peeksb(address)
 
     def pokeb(self, address: int, value: int) -> None:
-        self.clock.tstates += 3
+        if 16384 <= address < 32768:
+            self.tstates += self.delay_tstates[self.tstates] + 3
+        else:
+            self.tstates += 3
         self.memory.pokeb(address, value & 0xFF)
 
     def peekw(self, address: int) -> int:
-        lsb = self.peekb(address)
-        msb = self.peekb((address + 1) & 0xFFFF)
+        if 16384 <= address < 32768:
+            self.tstates += self.delay_tstates[self.tstates] + 3
+        else:
+            self.tstates += 3
+
+        lsb = self.memory.peekb(address)
+
+        address = (address + 1) & 0xffff
+        if 16384 <= address < 32768:
+            self.tstates += self.delay_tstates[self.tstates] + 3
+        else:
+            self.tstates += 3
+        msb = self.memory.peekb(address)
 
         return (msb << 8) + lsb
 
     def pokew(self, address: int, value: int) -> None:
+        if 16384 <= address < 32768:
+            self.tstates += self.delay_tstates[self.tstates] + 3
+        else:
+            self.tstates += 3
+
         self.memory.pokeb(address, value & 0xff)
-        self.memory.pokeb(address + 1, (value >> 8))
+
+        address = (address + 1) & 0xffff
+        if 16384 <= address < 32768:
+            self.tstates += self.delay_tstates[self.tstates] + 3
+        else:
+            self.tstates += 3
+        self.memory.pokeb(address, (value >> 8))
 
     def address_on_bus(self, address: int, tstates: int) -> None:
-        self.clock.tstates += tstates
+        if 16384 <= address < 32768:
+            for i in range(tstates):
+                self.tstates += self.delay_tstates[self.tstates] + 1
+        else:
+            self.tstates += tstates
 
     def interrupt_handling_time(self, tstates: int) -> None:
-        self.clock.tstates += tstates
+        self.tstates += tstates
 
     def in_port(self, port: int) -> int:
+        if 16384 <= port < 32768:
+            self.tstates += self.delay_tstates[self.tstates] + 1
+        else:
+            self.tstates += 1
+
+        if port & 0x0001 != 0:
+            if 16384 <= port < 32768:
+                self.tstates += self.delay_tstates[self.tstates] + 1
+                self.tstates += self.delay_tstates[self.tstates] + 1
+                self.tstates += self.delay_tstates[self.tstates] + 1
+            else:
+                self.tstates += 3
+        else:
+            self.tstates += self.delay_tstates[self.tstates] + 3
+
         return self.ports.in_port(port)
 
     def out_port(self, port: int, value: int):
+        if 16384 <= port < 32768:
+            self.tstates += self.delay_tstates[self.tstates] + 1
+        else:
+            self.tstates += 1
+
         self.ports.out_port(port, value)
+        if port & 0x0001 != 0:
+            if 16384 <= port < 32768:
+                self.tstates += self.delay_tstates[self.tstates] + 1
+                self.tstates += self.delay_tstates[self.tstates] + 1
+                self.tstates += self.delay_tstates[self.tstates] + 1
+            else:
+                self.tstates += 3
+        else:
+            self.tstates += self.delay_tstates[self.tstates] + 3
+
+    def add_tstates(self, int) -> None:
+        self.tstates += int
 
     def is_active_INT(self) -> bool:
-        current = self.clock.tstates
+        current = self.tstates
         if current >= TSTATES_PER_INTERRUPT:
             current -= TSTATES_PER_INTERRUPT
 
         return 0 < current < INTERRUPT_LENGTH
 
 
-class Spectrum():
+class Spectrum:
     def __init__(self):
-        self.clock = Clock()
+        # self.step_states = [0] * 6144
+        # self.states2screen = [0] * (TSTATES_PER_INTERRUPT + 100)
+        # self.scr_addr = [0] * SCREEN_HEIGHT
 
         self.keyboard = Keyboard()
         self.ports = Ports(self.keyboard)
         self.memory = Memory()
 
-        self.video = Video(self.clock, self.memory, self.ports, ratio=2)
-
-        self.bus_access = ZXSpectrum48BusAccess(self.clock, self.memory, self.ports)
-        self.z80 = Z80(
-            self.clock,
-            self.bus_access,
+        self.bus_access = ZXSpectrum48ClockAndBusAccess(
             self.memory,
-            self.clock_cycle_test)
+            self.ports)
+
+        self.video = Video(self.bus_access, self.memory, self.ports, ratio=2)
+
+        self.z80 = Z80(
+            self.bus_access,
+            self.memory)
+
         self.video_update_time = 0
-        # self.clock.tstates -= self.tstates_per_interrupt
-        self.clock.tstates -= TSTATES_LEFT_BORDER
 
         self.video.init()
-        self.tstates_state = self.tstates_interrupt
-        self.tstates_current_count = 0
-        self.tstates_current_line = 0
 
-        self.tstates_total = 0
-        # self.interrupt_tstates_count = -TSTATS_PER_INTERRUPT
-        # self.line_tstates_count = -TSTATES_PER_LINE
+        # Init lookup tables and such
+        # for linea in range(24):
+        #     lsb = (linea & 0x07) << 5
+        #     msb = linea & 0x18
+        #     addr = (msb << 8) + lsb
+        #     idx = linea << 3
+        #
+        #     for scan in range(8):
+        #         self.scr_addr[scan + idx] = 0x4000 + addr
+        #         addr += 256
+
+        # Border left: 32, right: 32, top:24, bottom: 24
+        # first_border_update = (FIRST_PIXEL_LINE - 24) * TSTATES_PER_LINE - (32 / 2)
+        # last_border_update = (255 + 24) * TSTATES_PER_LINE + 128 + 32
+
+        # firstBorderUpdate = ((64 - screenGeometry.border().top()) * spectrumModel.tstatesLine) - screenGeometry.border().left() / 2;
+        # lastBorderUpdate = (255 + screenGeometry.border().bottom()) * spectrumModel.tstatesLine + 128 + screenGeometry.border().right();
+        #
+        # first_screen_byte = FIRST_PIXEL_LINE * TSTATES_PER_LINE
+        #
+        # step = 0
+        # for tstates in range(first_screen_byte, 57248, 4):
+        #     col = (tstates % TSTATES_PER_LINE) / 4
+        #     if col <= 31:
+        #         scan = tstates // TSTATES_PER_LINE - 64  # UP BORDER WIDTH
+        #         self.states2screen[tstates + 2] = self.scr_addr[scan] + col
+        #         self.step_states[step] = tstates + 2
+        #         step += 1
 
     def load_rom(self, romfilename):
         """ Load given romfile into memory """
@@ -132,7 +237,7 @@ class Spectrum():
         self.load_rom(ROMFILE)
         self.ports.out_port(254, 0xff)  # white border on startup
         self.z80.reset()
-        self.clock.reset()
+        self.bus_access.reset()
 
         sys.setswitchinterval(255)  # we don't use threads, kind of speed up
 
@@ -142,96 +247,33 @@ class Spectrum():
         self.video.update_zx_screen()
         self.video.update()
 
-    def clock_cycle_test(self) -> bool:
-        if self.clock.tstates >= 0:
-            return self.tstates_state()
-
-            # set for next vertical blanking interrupt
-            # self.clock.tstates -= TSTATS_PER_INTERRUPT
-            #
-            # self.process_video_and_keyboard()
-            #
-            # # Handle interrupt in the processor add clock cycles for handling of the interrupt
-            # self.clock.tstates += self.z80.interruptCPU()
-            # return True
-        return False
-
-    def tstates_interrupt(self) -> bool:
-        # set for next vertical blanking interrupt
-        self.clock.tstates -= TSTATES_FIRST_LINE
-        self.tstates_total = TSTATES_FIRST_LINE
-        self.tstates_state = self.tstates_first_border_lines
-        self.tstates_current_line = 0
-
-        self.process_video_and_keyboard()
-        self.clock.end_frame(TSTATES_PER_INTERRUPT)
-
-        # Handle interrupt in the processor add clock cycles for handling of the interrupt
-        self.clock.tstates += self.z80.interruptCPU()
-        return True
-
-    def tstates_first_border_lines(self) -> bool:
-        self.tstates_current_line += 1
-        if self.tstates_current_line < FIRST_PIXEL_LINE:
-            self.clock.tstates -= TSTATES_PER_LINE
-            self.tstates_total += TSTATES_PER_LINE
-        else:
-            self.clock.tstates -= TSTATES_LEFT_BORDER
-            self.tstates_total += TSTATES_LEFT_BORDER
-            self.tstates_state = self.tstates_after_left_border
-        return False
-
-    def tstates_after_left_border(self) -> bool:
-        self.clock.tstates -= TSTATES_PIXELS
-        self.tstates_total += TSTATES_PIXELS
-        self.tstates_state = self.tstates_after_pixels
-        return False
-
-    def tstates_after_pixels(self) -> bool:
-        self.video.fill_screen_map_line(self.tstates_current_line - FIRST_PIXEL_LINE)
-
-        self.clock.tstates -= TSTATES_RIGHT_BORDER
-        self.tstates_total += TSTATES_RIGHT_BORDER
-        self.tstates_state = self.tstates_after_right_border
-
-        return False
-
-    def tstates_after_right_border(self) -> bool:
-        self.clock.tstates -= TSTATES_RETRACE
-        self.tstates_total += TSTATES_RETRACE
-        self.tstates_state = self.tstates_after_retrace
-        return False
-
-    def tstates_after_retrace(self) -> bool:
-        self.tstates_current_line += 1
-        if self.tstates_current_line < FIRST_PIXEL_LINE + SCREEN_HEIGHT:
-            self.clock.tstates -= TSTATES_LEFT_BORDER
-            self.tstates_total += TSTATES_LEFT_BORDER
-            self.tstates_state = self.tstates_after_left_border
-        else:
-            self.clock.tstates -= TSTATES_PER_LINE
-            self.tstates_total += TSTATES_PER_LINE
-            self.tstates_state = self.tstates_last_border_lines
-        return False
-
-    def tstates_last_border_lines(self) -> bool:
-        self.tstates_current_line += 1
-        if self.tstates_current_line < NUMBER_OF_LINES:
-            self.clock.tstates -= TSTATES_PER_LINE
-            self.tstates_total += TSTATES_PER_LINE
-        else:
-            self.clock.tstates -= TSTATES_LEFT_BORDER
-            self.tstates_total += TSTATES_LEFT_BORDER
-            self.tstates_state = self.tstates_interrupt
-        return False
-
     def run(self):
         """ Start the execution """
         try:
             while True:
+                next_stop = FIRST_PIXEL_LINE * TSTATES_PER_LINE
+                self.z80.execute(next_stop)
+                for line in range(SCREEN_HEIGHT):
+                    next_stop += TSTATES_LEFT_BORDER
+                    self.z80.execute(next_stop)
+                    next_stop += TSTATES_PIXELS
+                    self.z80.execute(next_stop)
+                    # self.video.fill_screen_map_line(line)
+                    # for x in range(32):
+                    #     self.video.update_pixel_byte(x, line)
+                    self.video.start_screen_line(line)
+                    for x in range(32):
+                        self.video.update_next_screen_byte()
+                    next_stop += TSTATES_RIGHT_BORDER
+                    next_stop += TSTATES_RETRACE
+                    self.z80.execute(next_stop)
+
                 self.z80.execute(TSTATES_PER_INTERRUPT)
-                self.clock.end_frame(TSTATES_PER_INTERRUPT)
-                self.video.fill_screen_map()
+
+                # while self.tstates < TSTATES_PER_INTERRUPT:
+                #     self.z80.execute_one_cycle()
+                self.bus_access.end_frame(TSTATES_PER_INTERRUPT)
+                # self.video.fill_screen_map()
                 self.process_video_and_keyboard()
         except KeyboardInterrupt:
             return
@@ -289,8 +331,21 @@ if __name__ == "__main__":
 
     # load.load_z80(SNADIR + 'Batty.z80')
 
+    # load.load_sna(SNADIR + 'Exolon.sna')
     # load.load_sna(SNADIR + 'Batman.sna')
     # load.load_sna(SNADIR + "CHUCKEGG 2.SNA")
-    load.load_sna(SNADIR + 'nirvana-demo.sna')
+    # load.load_sna(SNADIR + 'TheWayOfTheExplodingFist.sna')
+    # load.load_sna(SNADIR + 'WorseThingsHappenAtSea.sna')
+    # load.load_sna(SNADIR + 'Uridium.sna')
+    load.load_sna(SNADIR + 'yazzie.sna')
+    # load.load_sna(SNADIR + 'nirvana-demo.sna')
+    # load.load_sna(SNADIR + "../../Z80InstructionExerciser_for_the_Spectrum/snapshot1.sna")
+    # load.load_sna(SNADIR + "../../Z80InstructionExerciser_for_the_Spectrum/snapshot2.sna")
+    # load.load_sna(SNADIR + "../../Z80InstructionExerciser_for_the_Spectrum/snapshot3.sna")
+    # load.load_sna(SNADIR + "../../basic1.sna")
+
+    # spectrum.video.fast = True
+    # spectrum.z80.show_debug_info = True
+    # spectrum.keyboard.do_key(True, 13, 0)
 
     spectrum.run()
