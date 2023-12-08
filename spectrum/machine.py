@@ -54,18 +54,11 @@ class Spectrum:
 
         sys.setswitchinterval(255)  # we don't use threads, kind of speed up
 
-    # def process_interrupt(self):
-    #     self.bus_access.end_frame(TSTATES_PER_INTERRUPT)
-    #
-    #     self.ports.keyboard.do_keys()
-    #     self.video.update_zx_screen()
-    #     # self.video.update()
-    #     self.video.start_screen()
-    #
-    # def run(self):
-    #     try:
-    #         while True:
-    #             self.z80.execute(TSTATES_PER_INTERRUPT)
-    #             self.process_interrupt()
-    #     except KeyboardInterrupt:
-    #         return
+    def end_frame(self) -> None:
+        self.bus_access.end_frame(TSTATES_PER_INTERRUPT)
+        self.video.finish_screen()
+        self.video.update()
+        self.video.start_screen()
+
+    def execute(self, tstate_limit: int) -> None:
+        self.z80.execute(tstate_limit)

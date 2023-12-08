@@ -1,3 +1,4 @@
+import enum
 from typing import Optional
 
 import time
@@ -13,6 +14,13 @@ from spectrum.video import COLORS, TSTATES_PER_INTERRUPT, FULL_SCREEN_WIDTH, FUL
 CAPTION = "ZX Spectrum 48k Emulator"
 
 
+class EmulatorState(enum.Enum):
+    RUNNING = enum.auto()
+    PAUSED = enum.auto()
+
+
+# This is just an example of how enumator can be used in PyGame code
+
 class PyGameEmulator:
     def __init__(self, spectrum: Spectrum, show_fps: bool = True, ratio: int = 3) -> None:
         self.show_fps = show_fps
@@ -27,7 +35,9 @@ class PyGameEmulator:
 
         self.screen: Optional[Surface] = None
         self.pre_screen: Optional[Surface] = None
-        self.scaled_spectrum_size = (FULL_SCREEN_WIDTH * self.ratio, FULL_SCREEN_HEIGHT * self.ratio)
+        # self.scaled_spectrum_size = (FULL_SCREEN_WIDTH * self.ratio, FULL_SCREEN_HEIGHT * self.ratio)
+
+        self.state = EmulatorState.RUNNING
 
         self.fast = False
         self.show_fps = True
@@ -38,12 +48,19 @@ class PyGameEmulator:
         self._last_time = time.time()
         self.spare_time = [0] * 50
 
+        self.key_methods = {
+            pygame.K_F1: self.key_pause, pygame.K_F3: self.key_ratio
+        }
+
+    def scaled_spectrum_screen_size(self) -> tuple[int, int]:
+        return FULL_SCREEN_WIDTH * self.ratio, FULL_SCREEN_HEIGHT * self.ratio
+
     def init(self) -> None:
         pygame.init()
         icon = pygame.image.load('icon.png')
 
-        self.screen = pygame.display.set_mode(size=self.scaled_spectrum_size, flags=pygame.HWSURFACE | pygame.DOUBLEBUF, depth=8)
-        self.pre_screen = pygame.surface.Surface(size=self.scaled_spectrum_size, flags=pygame.HWSURFACE, depth=8)
+        self.screen = pygame.display.set_mode(size=self.scaled_spectrum_screen_size(), flags=pygame.HWSURFACE | pygame.DOUBLEBUF, depth=8)
+        self.pre_screen = pygame.surface.Surface(size=self.scaled_spectrum_screen_size(), flags=pygame.HWSURFACE, depth=8)
         self.pre_screen.set_palette(COLORS)
 
         pygame.display.set_caption(CAPTION)
@@ -51,7 +68,7 @@ class PyGameEmulator:
         pygame.display.flip()
 
     def update(self, frames: int, tstates: int) -> None:
-        pygame.transform.scale(self.machine.video.zx_screen_with_border, self.scaled_spectrum_size, self.pre_screen)
+        pygame.transform.scale(self.machine.video.zx_screen_with_border, self.scaled_spectrum_screen_size(), self.pre_screen)
         self.screen.blit(self.pre_screen, (0, 0))
 
         video_frame = False
@@ -85,33 +102,50 @@ class PyGameEmulator:
                 if self.fast:
                     pygame.display.set_caption(f'{CAPTION} - {self.video_clock.get_fps():.2f} FPS, Speed: {speed:0.1f}%')
                 else:
-                    # pygame.display.set_caption(f'{CAPTION} - Speed: {speed:0.1f}%')
                     pygame.display.set_caption(f'{CAPTION} - {self.video_clock.get_fps():.2f} FPS, {spare_time: 4}%')
 
             pygame.display.flip()
 
-    def process_interrupt(self):
-        self.machine.bus_access.end_frame(TSTATES_PER_INTERRUPT)
+    def key_pause(self) -> None:
+        self.state = EmulatorState.RUNNING if self.state == EmulatorState.PAUSED else EmulatorState.PAUSED
 
+    def key_ratio(self) -> None:
+        self.ratio = self.ratio + 0.5 if self.ratio < 3 else 1
+        self.screen = pygame.display.set_mode(size=self.scaled_spectrum_screen_size(), flags=pygame.HWSURFACE | pygame.DOUBLEBUF, depth=8)
+        self.pre_screen = pygame.surface.Surface(size=self.scaled_spectrum_screen_size(), flags=pygame.HWSURFACE, depth=8)
+        self.pre_screen.set_palette(COLORS)
+
+    def process_keyboard(self) -> None:
         pygame.event.pump()
         mods = pygame.key.get_mods()
         for event in pygame.event.get():
             if event.type == pygame.KEYDOWN:
-                self.keyboard.do_key(True, event.key, mods)
+                key_method = self.key_methods.get(event.key)
+                if key_method is not None:
+                    key_method()
+
+                if self.state == EmulatorState.RUNNING:
+                    self.keyboard.do_key(True, event.key, mods)
             elif event.type == pygame.KEYUP:
-                self.keyboard.do_key(False, event.key, mods)
+                if self.state == EmulatorState.RUNNING:
+                    self.keyboard.do_key(False, event.key, mods)
             elif event.type == pygame.QUIT:
                 raise KeyboardInterrupt()
 
-        self.video.finish_screen()
-        self.video.update()
+    def process_interrupt(self) -> None:
+        self.machine.end_frame()
+        self.process_keyboard()
         self.update(self.bus_access.frames, self.bus_access.tstates)
-        self.video.start_screen()
 
-    def run(self):
+    def run(self) -> None:
         try:
             while True:
-                self.machine.z80.execute(TSTATES_PER_INTERRUPT)
-                self.process_interrupt()
+                while self.state == EmulatorState.RUNNING:
+                    self.machine.execute(TSTATES_PER_INTERRUPT)
+                    self.process_interrupt()
+                while self.state == EmulatorState.PAUSED:
+                    self.update(self.bus_access.frames, self.bus_access.tstates)
+                    self.process_keyboard()
+
         except KeyboardInterrupt:
             return
