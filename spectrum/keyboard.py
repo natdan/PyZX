@@ -1,5 +1,3 @@
-import pygame
-
 from pygame.locals import *
 
 b4 = 0x10
@@ -84,17 +82,6 @@ class Keyboard:
         self.keyboard[_CAPS_V] = 0xff
 
         self.joy = [0]
-
-    def do_keys(self):
-        pygame.event.pump()
-        mods = pygame.key.get_mods()
-        for event in pygame.event.get():
-            if event.type == pygame.KEYDOWN:
-                self.do_key(True, event.key, mods)
-            elif event.type == pygame.KEYUP:
-                self.do_key(False, event.key, mods)
-            elif event.type == pygame.QUIT:
-                raise KeyboardInterrupt()
 
     def do_key(self, down, scan_code, mods):
         caps = (mods & KMOD_CTRL) != 0

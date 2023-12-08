@@ -5,6 +5,8 @@ ZX Spectrum Emulator
 Vadim Kataev
 www.technopedia.org
 """
+import os.path
+from typing import Callable
 
 import sys
 
@@ -16,9 +18,7 @@ from spectrum.spectrum_ports import SpectrumPorts
 from spectrum.video import TSTATES_PER_INTERRUPT, Video
 
 
-ROMFILE = '48.rom'
-
-# As per https://worldofspectrum.org/faq/reference/48kreference.htm
+ROMFILE = "zxspectrum48k.rom"
 
 
 class Spectrum:
@@ -27,7 +27,7 @@ class Spectrum:
         self.ports = SpectrumPorts(self.keyboard)
         self.memory = Memory()
 
-        self.video = Video(self.memory, self.ports, ratio=3)
+        self.video = Video(self.memory, self.ports)
 
         self.bus_access = ZXSpectrum48ClockAndBusAccess(
             self.memory,
@@ -41,7 +41,7 @@ class Spectrum:
         self.video.init()
 
     def load_rom(self, romfilename):
-        with open(romfilename, "rb") as rom:
+        with open(os.path.join(os.path.dirname(__file__), romfilename), "rb") as rom:
             rom.readinto(self.memory.mem)
 
         print(f"Loaded ROM: {romfilename}")
@@ -54,19 +54,18 @@ class Spectrum:
 
         sys.setswitchinterval(255)  # we don't use threads, kind of speed up
 
-    def process_video_and_keyboard(self):
-        self.ports.keyboard.do_keys()
-        self.video.update_zx_screen()
-        self.video.update(self.bus_access.frames, self.bus_access.tstates)
-
-    def run(self):
-        try:
-            while True:
-                self.bus_access.next_screen_byte_index = 0
-                self.video.start_screen()
-
-                self.z80.execute(TSTATES_PER_INTERRUPT)
-                self.bus_access.end_frame(TSTATES_PER_INTERRUPT)
-                self.process_video_and_keyboard()
-        except KeyboardInterrupt:
-            return
+    # def process_interrupt(self):
+    #     self.bus_access.end_frame(TSTATES_PER_INTERRUPT)
+    #
+    #     self.ports.keyboard.do_keys()
+    #     self.video.update_zx_screen()
+    #     # self.video.update()
+    #     self.video.start_screen()
+    #
+    # def run(self):
+    #     try:
+    #         while True:
+    #             self.z80.execute(TSTATES_PER_INTERRUPT)
+    #             self.process_interrupt()
+    #     except KeyboardInterrupt:
+    #         return

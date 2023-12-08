@@ -6,8 +6,11 @@ spectrum = Spectrum()
 spectrum.init()
 load = Load(spectrum.z80, spectrum.ports)
 
+emulator = PyGameEmulator(spectrum, show_fps=True, ratio=3)
+emulator.init()
+
 # spectrum.video.fast = True
 # spectrum.z80.show_debug_info = True
 # spectrum.keyboard.do_key(True, 13, 0)
 
-spectrum.run()
+emulator.run()

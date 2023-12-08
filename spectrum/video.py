@@ -1,4 +1,3 @@
-import time
 from typing import Optional
 
 import pygame
@@ -54,11 +53,9 @@ SPECTRUM_FULL_SCREEN_SIZE = (FULL_SCREEN_WIDTH, FULL_SCREEN_HEIGHT)
 
 
 class Video:
-    def __init__(self, memory: Memory, ports: SpectrumPorts, show_fps: bool = True, ratio: int = 2):
+    def __init__(self, memory: Memory, ports: SpectrumPorts):
         self.memory = memory
         self.ports = ports
-        self.ratio = ratio
-        self.show_fps = show_fps
 
         # Initialisation of address tables for pixels and attribute lines
         self.addr_pix = [(((line // 64) * 2048) + ((line % 8) * 256) + ((line & 56) * 4)) for line in range(192)]
@@ -77,13 +74,8 @@ class Video:
 
         self.zx_screen: Optional[Surface] = None
         self.zx_screen_with_border: Optional[Surface] = None
-        self.screen: Optional[Surface] = None
-        self.pre_screen: Optional[Surface] = None
 
-        self.video_clock = pygame.time.Clock()
         self.old_border = -1
-
-        self.scaled_spectrum_size = (FULL_SCREEN_WIDTH * self.ratio, FULL_SCREEN_HEIGHT * self.ratio)
 
         self.buffer_m = memoryview(bytearray(SCREEN_WIDTH * SCREEN_HEIGHT))
         self.back_buffer_m = memoryview(bytearray(SCREEN_WIDTH * SCREEN_HEIGHT))
@@ -91,14 +83,6 @@ class Video:
         self.zx_videoram = self.memory.mem[16384:16384 + 6912]
 
         self.init_pixelmap()
-
-        self.show_fps = True
-        self.fast = False
-        self._fast_counter = 0
-        self._last_frame = 0
-        self._last_tstates = 0
-        self._last_time = time.time()
-        self.spare_time = [0] * 50
 
     def init_pixelmap(self):
         for i in range(256):
@@ -110,73 +94,18 @@ class Video:
                     pixels[7 - bit] = color_ink if (pix & (1 << bit)) else color_paper
 
     def init(self):
-        pygame.init()
-
-        icon = pygame.image.load('icon.png')
-
         self.zx_screen = pygame.surface.Surface(SPECTRUM_SCREEN_SIZE, pygame.HWSURFACE, 8)
         self.zx_screen.set_palette(COLORS)
-        # print(f"zx_screen get depth = {zx_screen.get_bitsize()}")
 
         self.zx_screen_with_border = pygame.surface.Surface((FULL_SCREEN_WIDTH, FULL_SCREEN_HEIGHT), pygame.HWSURFACE, 8)
         self.zx_screen_with_border.set_palette(COLORS)
 
-        self.pre_screen = pygame.surface.Surface(size=self.scaled_spectrum_size, flags=pygame.HWSURFACE, depth=8)
-        self.pre_screen.set_palette(COLORS)
-
-        self.screen = pygame.display.set_mode(size=self.scaled_spectrum_size, flags=pygame.HWSURFACE | pygame.DOUBLEBUF, depth=8)
-
-        # pygame.display.set_palette(COLORS)
-        pygame.display.set_caption(CAPTION)
-        pygame.display.set_icon(icon)
-        pygame.display.flip()
-
-    def update(self, frames: int, tstates: int) -> None:
+    def update(self) -> None:
         # TODO - collect timings of changes of border and recreate it afterwards here
         if self.ports.current_border != self.old_border:
             self.zx_screen_with_border.fill(self.ports.current_border)
             self.old_border = self.ports.current_border
-
-        # self.fill_screen_map()
         self.zx_screen_with_border.blit(self.zx_screen, (64, 32))
-        pygame.transform.scale(self.zx_screen_with_border, self.scaled_spectrum_size, self.pre_screen)
-        self.screen.blit(self.pre_screen, (0, 0))
-
-        video_frame = False
-        if self.fast:
-            if self._fast_counter <= 0:
-                self.video_clock.tick(50)
-                pygame.display.flip()
-                self._fast_counter = 200
-                video_frame = True
-            self._fast_counter -= 1
-        else:
-            video_frame = True
-
-        now = time.time()
-        self.video_clock.tick(50)
-
-        if video_frame:
-            if self.show_fps:
-                total_tstates = (frames - self._last_frame) * TSTATES_PER_INTERRUPT + (tstates - self._last_tstates)
-                speed = (total_tstates / (TSTATES_PER_INTERRUPT * (now - self._last_time) * 50)) * 100
-
-                self._last_frame = frames
-                self._last_tstates = tstates
-                self._last_time = now
-
-                time_difference = time.time() - now
-                self.spare_time[0:-1] = self.spare_time[1:]
-                self.spare_time[-1] = int(time_difference * 100000 / 20)
-                spare_time = int(sum(self.spare_time) / len(self.spare_time))
-
-                if self.fast:
-                    pygame.display.set_caption(f'{CAPTION} - {self.video_clock.get_fps():.2f} FPS, Speed: {speed:0.1f}%')
-                else:
-                    # pygame.display.set_caption(f'{CAPTION} - Speed: {speed:0.1f}%')
-                    pygame.display.set_caption(f'{CAPTION} - {self.video_clock.get_fps():.2f} FPS, {spare_time: 4}%')
-
-            pygame.display.flip()
 
     def fill_screen_map(self) -> None:
         # zx_videoram = self.memory.mem[16384:16384 + 6912]
@@ -191,44 +120,12 @@ class Video:
                 self.buffer_m[offs:offs + 8] = self.pixelmap_m[poffs:poffs + 8]
                 offs += 8
 
-    def fill_screen_map_line(self, coord_y: int) -> None:
-        offs = 32 * 8 * coord_y
-
-        pix_addr = self.addr_pix[coord_y]
-        attr_addr = self.addr_attr[coord_y]
-
-        for i in range(0, 32):
-            poffs = self.zx_videoram[attr_addr + i] * STRIDE + self.zx_videoram[pix_addr + i] * 8
-            self.buffer_m[offs:offs + 8] = self.pixelmap_m[poffs:poffs + 8]
-            offs += 8
-
     def start_screen(self) -> None:
         self.offs = 0
         self.pix_addr = self.addr_pix[0]
         self.attr_addr = self.addr_attr[0]
         self.pixel_byte_x = 0
         self.pixel_byte_y = 0
-
-    def start_screen_line(self, line: int) -> None:
-        self.offs = 32 * 8 * line
-        self.pix_addr = self.addr_pix[line]
-        self.attr_addr = self.addr_attr[line]
-        self.pixel_byte_x = 0
-        self.pixel_byte_y = line
-
-    def update_pixel_byte(self, x: int, line: int) -> None:
-        offs = 32 * 8 * line + x * 8
-        pix_addr = self.addr_pix[line] + x
-        attr_addr = self.addr_attr[line] + x
-
-        poffs = self.zx_videoram[attr_addr] * STRIDE + self.zx_videoram[pix_addr] * 8
-        self.buffer_m[offs:offs + 8] = self.pixelmap_m[poffs:poffs + 8]
-
-    def update_next_screen_byte(self) -> None:
-        poffs = self.zx_videoram[self.attr_addr + self.pixel_byte_x] * STRIDE + self.zx_videoram[self.pix_addr + self.pixel_byte_x] * 8
-        self.buffer_m[self.offs:self.offs + 8] = self.pixelmap_m[poffs:poffs + 8]
-        self.offs += 8
-        self.pixel_byte_x += 1
 
     def update_next_screen_word(self) -> None:
         poffs = self.zx_videoram[self.attr_addr + self.pixel_byte_x] * STRIDE + self.zx_videoram[self.pix_addr + self.pixel_byte_x] * 8
@@ -250,6 +147,6 @@ class Video:
                 self.attr_addr = self.addr_attr[self.pixel_byte_y]
                 self.pixel_byte_x = 0
 
-    def update_zx_screen(self) -> None:
+    def finish_screen(self) -> None:
         buf = self.zx_screen.get_buffer()
         buf.write(self.buffer_m.tobytes())

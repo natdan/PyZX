@@ -47,11 +47,9 @@ class ZXSpectrum48ClockAndBusAccess(ClockAndBusAccess):
                 self.delay_tstates[frame] = 0
                 frame += 1
                 self.delay_tstates[frame] = 0
-        #
-        # for i in range(len(self.delay_tstates)):
-        #     print(f"{i}={self.delay_tstates[i]}")
 
     def end_frame(self, frame_tstates: int) -> None:
+        self.next_screen_byte_index = 0
         self.tstates -= frame_tstates
         self.frames += 1
 
