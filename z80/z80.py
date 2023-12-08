@@ -1,7 +1,7 @@
 from typing import Callable
 
-from bus_access import ClockAndBusAccess
-from memory import Memory
+from z80.bus_access import ClockAndBusAccess
+from z80.memory import Memory
 
 
 IM0 = 0

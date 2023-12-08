@@ -5,8 +5,9 @@ import pygame
 
 from pygame import Surface
 
-from ports import Ports
-from memory import Memory
+from spectrum.spectrum_ports import SpectrumPorts
+from z80.memory import Memory
+
 
 TSTATES_PER_INTERRUPT = 69888
 TSTATES_PER_LINE = 224
@@ -53,7 +54,7 @@ SPECTRUM_FULL_SCREEN_SIZE = (FULL_SCREEN_WIDTH, FULL_SCREEN_HEIGHT)
 
 
 class Video:
-    def __init__(self, memory: Memory, ports: Ports, show_fps: bool = True, ratio: int = 2):
+    def __init__(self, memory: Memory, ports: SpectrumPorts, show_fps: bool = True, ratio: int = 2):
         self.memory = memory
         self.ports = ports
         self.ratio = ratio

@@ -1,12 +1,12 @@
 import sys
 import struct
 
-from ports import Ports
-from z80 import Z80, IM0, IM1, IM2
+from spectrum.spectrum_ports import SpectrumPorts
+from z80.z80 import Z80, IM0, IM1, IM2
 
 
 class Load:
-    def __init__(self, z80: Z80, ports: Ports):
+    def __init__(self, z80: Z80, ports: SpectrumPorts):
         self.z80 = z80
         self.ports = ports
         self._z80_header = struct.Struct('<BBHHHHBBBHHHHBBHHBBB')

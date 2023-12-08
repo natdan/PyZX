@@ -1,5 +1,5 @@
-from memory import Memory
-from ports import Ports
+from z80.memory import Memory
+from z80.ports import Ports
 
 
 class ClockAndBusAccess:
@@ -7,16 +7,11 @@ class ClockAndBusAccess:
                  memory: Memory,
                  ports: Ports) -> None:
         self.tstates = 0
-        self.frames = 0
         self.memory = memory
         self.ports = ports
 
     def reset(self) -> None:
         self.tstates = 0
-
-    def end_frame(self, frame_tstates: int) -> None:
-        self.tstates -= frame_tstates
-        self.frames += 1
 
     def fetch_opcode(self, address: int) -> int:
         t = self.memory.peekb(address)
