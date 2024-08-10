@@ -1,5 +1,8 @@
+#!/usr/bin/env python3
+
 from spectrum.machine import Spectrum
 from utils.load import Load
+from pygame_emulator import PyGameEmulator
 
 
 spectrum = Spectrum()
